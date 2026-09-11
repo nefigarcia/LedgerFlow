@@ -22,11 +22,11 @@ export default async function DocumentsPage({
     take: 50,
   });
   return (
-    <div>
-      <PageHeader title="Documents" description="Receipts, contracts, and files linked to your records." />
+    <div className="space-y-6">
+      <PageHeader eyebrow="Documents" title="Files & receipts" description="Attach documents to expenses, invoices, or projects." />
       {docs.length === 0 ? (
         <EmptyState
-          icon={<FolderOpen className="h-8 w-8" />}
+          icon={<FolderOpen className="h-6 w-6" />}
           title="No documents uploaded yet"
           description="Attach receipts to expenses, or upload contracts to invoices and projects. Document storage uses a pluggable driver — swap in S3 for production."
         />

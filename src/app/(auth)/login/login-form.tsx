@@ -42,7 +42,7 @@ export function LoginForm() {
       <Field label="Password" htmlFor="password" error={errors.password} required>
         <Input id="password" name="password" type="password" autoComplete="current-password" required />
       </Field>
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full" size="lg" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>
     </form>

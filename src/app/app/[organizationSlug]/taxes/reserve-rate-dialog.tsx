@@ -15,7 +15,7 @@ export function ReserveRateDialog({ organizationSlug, current }: { organizationS
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="text-primary hover:underline">Change rate</button>
+        <button className="text-2xs font-medium uppercase tracking-widest text-primary hover:underline">Change</button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Change reserve rate</DialogTitle></DialogHeader>

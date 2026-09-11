@@ -1,10 +1,9 @@
 "use client";
-import { useRef, useState } from "react";
+import * as React from "react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Msg { role: "user" | "assistant"; content: string; }
@@ -13,25 +12,27 @@ const SUGGESTED = [
   "How did we do this month?",
   "How much can we safely distribute?",
   "Which invoices need attention?",
-  "Are our expenses increasing?",
-  "Which clients generate the most revenue?",
   "Explain my tax reserve.",
-  "What is our projected annual revenue?",
-  "Summarize the business for this month.",
+  "Which clients generate the most revenue?",
+  "Are expenses increasing?",
 ];
 
 export function AssistantChat({ organizationSlug }: { organizationSlug: string }) {
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [pending, setPending] = useState(false);
-  const [conversationId, setConversationId] = useState<string | undefined>();
-  const [input, setInput] = useState("");
-  const listRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = React.useState<Msg[]>([]);
+  const [pending, setPending] = React.useState(false);
+  const [conversationId, setConversationId] = React.useState<string | undefined>();
+  const [input, setInput] = React.useState("");
+  const listRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollBottom = () =>
+    setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }), 30);
 
   async function send(message: string) {
     if (!message.trim() || pending) return;
     setPending(true);
     setMessages((m) => [...m, { role: "user", content: message }]);
     setInput("");
+    scrollBottom();
     try {
       const res = await fetch("/api/ai/ask", {
         method: "POST",
@@ -45,7 +46,7 @@ export function AssistantChat({ organizationSlug }: { organizationSlug: string }
       const data = await res.json();
       setConversationId(data.conversationId);
       setMessages((m) => [...m, { role: "assistant", content: data.answer || "…" }]);
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }), 10);
+      scrollBottom();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -53,56 +54,54 @@ export function AssistantChat({ organizationSlug }: { organizationSlug: string }
     }
   }
 
+  const empty = messages.length === 0;
+
   return (
-    <Card className="mt-4 flex h-[72vh] flex-col">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4" /> Ask about your business</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col p-0">
-        <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto p-4">
-          {messages.length === 0 ? (
-            <div>
-              <p className="text-sm text-muted-foreground">Try one of these:</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {SUGGESTED.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => send(s)}
-                    className="rounded-full border bg-secondary/50 px-3 py-1.5 text-xs font-medium hover:bg-secondary"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+    <div className="flex h-[calc(100vh-11rem)] flex-col overflow-hidden rounded-2xl border border-border/70 bg-surface">
+      <div ref={listRef} className="flex-1 overflow-y-auto">
+        {empty ? (
+          <div className="mx-auto max-w-2xl px-6 py-16 text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-primary to-primary-hover text-primary-foreground shadow-md">
+              <Sparkles className="h-6 w-6" />
             </div>
-          ) : (
-            messages.map((m, i) => (
-              <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                <div className={cn(
-                  "max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-line",
-                  m.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
-                )}>
-                  {m.content}
-                </div>
-              </div>
-            ))
-          )}
-          {pending && (
-            <div className="flex justify-start">
-              <div className="rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">Thinking…</div>
+            <h2 className="mt-4 text-lg font-semibold tracking-tight">Ask about your business</h2>
+            <p className="mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">
+              I only see aggregated numbers for this workspace. I&apos;ll flag tax-related answers as planning estimates.
+            </p>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              {SUGGESTED.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => send(s)}
+                  className="group flex items-center gap-2 rounded-lg border border-border/70 bg-surface p-3 text-left text-sm transition-colors hover:border-border-strong hover:bg-surface-hover"
+                >
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="flex-1 text-left text-foreground">{s}</span>
+                </button>
+              ))}
             </div>
-          )}
-        </div>
-        <form
-          className="flex items-end gap-2 border-t p-3"
-          onSubmit={(e) => { e.preventDefault(); void send(input); }}
-        >
+          </div>
+        ) : (
+          <div className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+            {messages.map((m, i) => (
+              <Bubble key={i} role={m.role} content={m.content} />
+            ))}
+            {pending && <Bubble role="assistant" content="Thinking…" pending />}
+          </div>
+        )}
+      </div>
+
+      <form
+        className="mx-auto w-full max-w-3xl border-t border-border/70 p-4"
+        onSubmit={(e) => { e.preventDefault(); void send(input); }}
+      >
+        <div className="relative rounded-xl border border-border bg-surface shadow-xs transition-colors focus-within:border-primary">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about revenue, invoices, cash, or taxes…"
+            placeholder="Ask about revenue, invoices, cash, taxes, or distributions…"
             rows={2}
-            className="resize-none"
+            className="resize-none border-0 pr-14 shadow-none focus-visible:ring-0"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -110,14 +109,50 @@ export function AssistantChat({ organizationSlug }: { organizationSlug: string }
               }
             }}
           />
-          <Button type="submit" disabled={pending || !input.trim()}>
-            <Send className="h-4 w-4" /> Ask
+          <Button
+            type="submit"
+            size="icon"
+            disabled={pending || !input.trim()}
+            className="absolute bottom-2 right-2 h-8 w-8"
+          >
+            <Send className="h-3.5 w-3.5" />
           </Button>
-        </form>
-        <p className="border-t p-2 text-center text-xs text-muted-foreground">
-          Tax numbers are planning estimates. Not tax, legal, or accounting advice.
+        </div>
+        <p className="mt-2 text-center text-2xs text-muted-foreground">
+          Enter to send · Shift + Enter for a new line · Tax numbers are planning estimates
         </p>
-      </CardContent>
-    </Card>
+      </form>
+    </div>
+  );
+}
+
+function Bubble({ role, content, pending }: { role: "user" | "assistant"; content: string; pending?: boolean }) {
+  const isUser = role === "user";
+  return (
+    <div className="flex items-start gap-3">
+      <div
+        className={cn(
+          "grid h-8 w-8 shrink-0 place-items-center rounded-full",
+          isUser
+            ? "bg-secondary text-secondary-foreground"
+            : "bg-gradient-to-br from-primary to-primary-hover text-primary-foreground shadow-sm",
+        )}
+      >
+        {isUser ? <UserIcon className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-2xs font-medium uppercase tracking-widest text-muted-foreground">
+          {isUser ? "You" : "LedgerFlow"}
+        </div>
+        <div
+          className={cn(
+            "mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground",
+            pending && "animate-pulse text-muted-foreground",
+          )}
+        >
+          {content}
+        </div>
+      </div>
+    </div>
   );
 }

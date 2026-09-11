@@ -3,252 +3,366 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { useTheme } from "next-themes";
 import {
-  LayoutDashboard,
-  Users2,
-  FolderKanban,
-  Clock,
-  FileText,
-  CreditCard,
-  Receipt,
-  Wallet,
-  Calculator,
-  HandCoins,
-  TrendingUp,
-  BarChart3,
-  FolderOpen,
-  Sparkles,
-  Settings,
-  Plus,
-  LogOut,
-  Menu,
-  X,
-  Sun,
-  Moon,
-  ChevronsUpDown,
+  Menu, X, Sun, Moon, LogOut, Search as SearchIcon, Command as CommandIcon,
+  Sparkles, ChevronLeft, ChevronRight, User as UserIcon, Bell, PanelLeftClose, PanelLeft,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTheme } from "next-themes";
-import type { OrganizationRole } from "@prisma/client";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { hasPermission } from "@/lib/permissions/permissions";
+import type { OrganizationRole } from "@prisma/client";
+import { NAV_GROUPS, BOTTOM_NAV } from "./sidebar-nav";
+import { OrgSwitcher } from "./org-switcher";
+import { QuickCreate } from "./quick-create";
+import { CommandPalette } from "./command-palette";
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  requires?: Parameters<typeof hasPermission>[1];
-}
-
-const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Cash", href: "/cash", icon: Wallet },
-  { label: "Clients", href: "/clients", icon: Users2, requires: "clients:read" },
-  { label: "Projects", href: "/projects", icon: FolderKanban, requires: "projects:read" },
-  { label: "Time", href: "/time", icon: Clock, requires: "time:read" },
-  { label: "Invoices", href: "/invoices", icon: FileText, requires: "invoices:read" },
-  { label: "Payments", href: "/payments", icon: CreditCard, requires: "payments:read" },
-  { label: "Expenses", href: "/expenses", icon: Receipt, requires: "expenses:read" },
-  { label: "Taxes", href: "/taxes", icon: Calculator, requires: "taxes:read" },
-  { label: "Distributions", href: "/distributions", icon: HandCoins, requires: "distributions:read" },
-  { label: "Forecast", href: "/forecast", icon: TrendingUp, requires: "reports:read" },
-  { label: "Reports", href: "/reports", icon: BarChart3, requires: "reports:read" },
-  { label: "Documents", href: "/documents", icon: FolderOpen },
-  { label: "Assistant", href: "/assistant", icon: Sparkles, requires: "ai:use" },
-  { label: "Settings", href: "/settings", icon: Settings, requires: "settings:read" },
-];
-
-interface Props {
-  organization: {
-    id: string;
-    name: string;
-    slug: string;
-    currency: string;
-    logoUrl: string | null;
-  };
+interface AppShellProps {
+  organization: { id: string; name: string; slug: string; currency: string; logoUrl: string | null };
   role: OrganizationRole;
   memberships: { id: string; name: string; slug: string }[];
+  user?: { name: string | null; email: string | null; image: string | null } | null;
   children: React.ReactNode;
 }
 
-export function AppShell({ organization, role, memberships, children }: Props) {
+export function AppShell({ organization, role, memberships, user, children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const { theme, setTheme, resolvedTheme } = useTheme();
-
+  const [collapsed, setCollapsed] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
   const base = `/app/${organization.slug}`;
 
-  const items = NAV.filter((i) => !i.requires || hasPermission(role, i.requires));
+  // Persist collapse preference
+  React.useEffect(() => {
+    const saved = typeof window !== "undefined" && localStorage.getItem("lf.sidebar.collapsed");
+    if (saved === "1") setCollapsed(true);
+  }, []);
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("lf.sidebar.collapsed", collapsed ? "1" : "0");
+    }
+  }, [collapsed]);
 
-  const NavContent = (
-    <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-      {items.map((item) => {
+  // Cmd/Ctrl+K opens palette
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const currentSection = React.useMemo(() => {
+    // Find nav item matching current pathname
+    for (const group of NAV_GROUPS) {
+      for (const item of group.items) {
         const href = base + item.href;
-        const active =
-          pathname === href ||
-          (pathname.startsWith(href + "/") && item.href !== "/dashboard");
-        return (
-          <Link
-            key={item.href}
-            href={href}
-            onClick={() => setMobileOpen(false)}
-            className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              active
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+        if (pathname === href || pathname.startsWith(href + "/")) return item.label;
+      }
+    }
+    if (pathname.startsWith(base + BOTTOM_NAV.href)) return BOTTOM_NAV.label;
+    return organization.name;
+  }, [pathname, base, organization.name]);
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <div className="flex min-h-screen bg-background">
+        {/* Desktop sidebar */}
+        <aside
+          className={cn(
+            "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-border/70 bg-surface transition-[width] duration-200 md:flex",
+            collapsed ? "w-[68px]" : "w-[248px]",
+          )}
+        >
+          <div className={cn("flex h-14 items-center border-b border-border/70", collapsed ? "justify-center px-2" : "justify-between px-4")}>
+            <Link href={`${base}/dashboard`} className="focus:outline-none">
+              <BrandMark showName={!collapsed} size={collapsed ? "sm" : "md"} />
+            </Link>
+            {!collapsed && (
+              <button
+                onClick={() => setCollapsed(true)}
+                className="rounded-md p-1 text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
             )}
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-
-  const OrgSwitcher = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center justify-between gap-2 rounded-md border bg-card p-2 text-left text-sm hover:bg-accent">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">
-              {initials(organization.name)}
-            </span>
-            <span className="min-w-0 truncate font-medium">{organization.name}</span>
           </div>
-          <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-        {memberships.map((m) => (
-          <DropdownMenuItem key={m.id} asChild>
-            <Link href={`/app/${m.slug}/dashboard`}>{m.name}</Link>
-          </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/onboarding?new=1">
-            <Plus className="mr-2 h-4 w-4" /> Add new business
-          </Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 
-  return (
-    <div className="flex min-h-screen">
-      {/* Sidebar (desktop) */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-card md:flex">
-        <div className="flex h-14 items-center gap-2 border-b px-4">
-          <Link href={`${base}/dashboard`}>
-            <BrandMark />
-          </Link>
-        </div>
-        <div className="p-3">{OrgSwitcher}</div>
-        {NavContent}
-        <div className="border-t p-3">
-          <QuickActionMenu base={base} />
-        </div>
-      </aside>
-
-      {/* Mobile sheet */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-72 flex-col bg-card">
-            <div className="flex h-14 items-center justify-between border-b px-4">
-              <BrandMark />
-              <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="p-3">{OrgSwitcher}</div>
-            {NavContent}
-          </aside>
-        </div>
-      )}
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-background/95 px-4 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)}>
-              <Menu className="h-5 w-5" />
-            </Button>
+          <div className={cn("px-3 pt-3", collapsed && "px-2")}>
+            <OrgSwitcher organization={organization} memberships={memberships} role={role} collapsed={collapsed} />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden md:block">
-              <QuickActionMenu base={base} compact />
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              aria-label="Toggle theme"
-            >
-              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{initials("").toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href={`${base}/settings`}>Settings</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={async () => {
-                    await signOut({ redirect: false });
-                    router.push("/login");
-                  }}
+
+          <nav className="flex-1 overflow-y-auto px-3 py-4">
+            {NAV_GROUPS.map((group, gi) => {
+              const visibleItems = group.items.filter((i) => !i.requires || hasPermission(role, i.requires));
+              if (visibleItems.length === 0) return null;
+              return (
+                <div key={group.id} className={cn(gi > 0 && "mt-4")}>
+                  {group.label && !collapsed ? (
+                    <div className="mb-1 px-2 text-2xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                      {group.label}
+                    </div>
+                  ) : null}
+                  <ul className="space-y-0.5">
+                    {visibleItems.map((item) => {
+                      const href = base + item.href;
+                      const active = pathname === href || pathname.startsWith(href + "/");
+                      const link = (
+                        <Link
+                          href={href}
+                          onClick={() => setMobileOpen(false)}
+                          className={cn(
+                            "group relative flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors",
+                            collapsed ? "h-9 justify-center px-0" : "h-8 px-2",
+                            active
+                              ? "bg-primary-soft text-primary-soft-foreground"
+                              : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                          )}
+                        >
+                          {active ? (
+                            <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-primary" aria-hidden />
+                          ) : null}
+                          <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                          {!collapsed && <span className="truncate">{item.label}</span>}
+                        </Link>
+                      );
+                      return (
+                        <li key={item.href}>
+                          {collapsed ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>{link}</TooltipTrigger>
+                              <TooltipContent side="right">{item.label}</TooltipContent>
+                            </Tooltip>
+                          ) : link}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+          </nav>
+
+          <div className={cn("border-t border-border/70 p-3", collapsed && "px-2")}>
+            {hasPermission(role, "settings:read") ? (
+              collapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href={`${base}${BOTTOM_NAV.href}`}
+                      className={cn(
+                        "flex h-9 items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                        pathname.startsWith(base + BOTTOM_NAV.href) && "bg-primary-soft text-primary",
+                      )}
+                    >
+                      <BOTTOM_NAV.icon className="h-4 w-4" />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{BOTTOM_NAV.label}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <Link
+                  href={`${base}${BOTTOM_NAV.href}`}
+                  className={cn(
+                    "flex h-8 items-center gap-2.5 rounded-md px-2 text-sm font-medium transition-colors",
+                    pathname.startsWith(base + BOTTOM_NAV.href)
+                      ? "bg-primary-soft text-primary-soft-foreground"
+                      : "text-muted-foreground hover:bg-surface-hover hover:text-foreground",
+                  )}
                 >
-                  <LogOut className="mr-2 h-4 w-4" /> Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <BOTTOM_NAV.icon className="h-4 w-4" />
+                  {BOTTOM_NAV.label}
+                </Link>
+              )
+            ) : null}
+            {collapsed && (
+              <button
+                onClick={() => setCollapsed(false)}
+                className="mt-2 flex h-9 w-full items-center justify-center rounded-md text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                aria-label="Expand sidebar"
+              >
+                <PanelLeft className="h-4 w-4" />
+              </button>
+            )}
           </div>
-        </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
-      </div>
-    </div>
-  );
-}
+        </aside>
 
-function QuickActionMenu({ base, compact }: { base: string; compact?: boolean }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size={compact ? "sm" : "default"} className={cn(compact ? "" : "w-full")}>
-          <Plus className="h-4 w-4" /> {compact ? "New" : "Create"}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align={compact ? "end" : "start"} className="w-56">
-        <DropdownMenuItem asChild><Link href={`${base}/invoices/new`}>New invoice</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/payments?new=1`}>Record payment</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/expenses?new=1`}>New expense</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/clients?new=1`}>New client</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/projects?new=1`}>New project</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/time?new=1`}>Add time</Link></DropdownMenuItem>
-        <DropdownMenuItem asChild><Link href={`${base}/distributions?new=1`}>Owner distribution</Link></DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
+            <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-surface animate-in slide-in-from-left duration-200">
+              <div className="flex h-14 items-center justify-between border-b border-border px-4">
+                <Link href={`${base}/dashboard`}><BrandMark /></Link>
+                <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              <div className="p-3">
+                <OrgSwitcher organization={organization} memberships={memberships} role={role} />
+              </div>
+              <nav className="flex-1 overflow-y-auto px-3 pb-4">
+                {NAV_GROUPS.map((group, gi) => {
+                  const visibleItems = group.items.filter((i) => !i.requires || hasPermission(role, i.requires));
+                  if (visibleItems.length === 0) return null;
+                  return (
+                    <div key={group.id} className={cn(gi > 0 && "mt-4")}>
+                      {group.label ? (
+                        <div className="mb-1 px-2 text-2xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                          {group.label}
+                        </div>
+                      ) : null}
+                      <ul className="space-y-0.5">
+                        {visibleItems.map((item) => {
+                          const href = base + item.href;
+                          const active = pathname === href || pathname.startsWith(href + "/");
+                          return (
+                            <li key={item.href}>
+                              <Link
+                                href={href}
+                                onClick={() => setMobileOpen(false)}
+                                className={cn(
+                                  "flex h-10 items-center gap-2.5 rounded-md px-2 text-sm font-medium",
+                                  active
+                                    ? "bg-primary-soft text-primary-soft-foreground"
+                                    : "text-foreground/70 hover:bg-surface-hover hover:text-foreground",
+                                )}
+                              >
+                                <item.icon className={cn("h-4 w-4", active && "text-primary")} />
+                                {item.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </nav>
+              <div className="border-t border-border p-3">
+                {hasPermission(role, "settings:read") && (
+                  <Link
+                    href={`${base}${BOTTOM_NAV.href}`}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex h-10 items-center gap-2.5 rounded-md px-2 text-sm font-medium text-foreground/70 hover:bg-surface-hover"
+                  >
+                    <BOTTOM_NAV.icon className="h-4 w-4" />
+                    Settings
+                  </Link>
+                )}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Top command bar */}
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border/70 bg-background/85 px-3 backdrop-blur-md md:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)}>
+                <Menu className="h-5 w-5" />
+              </Button>
+              <div className="hidden items-center gap-1.5 text-sm md:flex">
+                <span className="text-muted-foreground">{organization.name}</span>
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <span className="font-medium text-foreground">{currentSection}</span>
+              </div>
+              <div className="md:hidden">
+                <BrandMark showName={false} size="sm" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(true)}
+                className={cn(
+                  "hidden h-9 items-center gap-2 rounded-md border border-border/70 bg-surface px-2.5 text-sm text-muted-foreground",
+                  "hover:border-border-strong hover:text-foreground transition-colors md:flex md:min-w-[240px] lg:min-w-[280px]",
+                )}
+              >
+                <SearchIcon className="h-4 w-4" />
+                <span className="flex-1 text-left">Search or jump to…</span>
+                <kbd className="inline-flex h-5 items-center gap-0.5 rounded border border-border/70 bg-background px-1.5 font-mono text-2xs text-muted-foreground">
+                  <CommandIcon className="h-3 w-3" /> K
+                </kbd>
+              </button>
+
+              <Button variant="ghost" size="icon" onClick={() => setPaletteOpen(true)} className="md:hidden">
+                <SearchIcon className="h-4 w-4" />
+              </Button>
+
+              <Button asChild variant="ghost" size="sm" className="hidden gap-1.5 md:inline-flex">
+                <Link href={`${base}/assistant`}>
+                  <Sparkles className="h-3.5 w-3.5" /> Ask
+                </Link>
+              </Button>
+
+              <QuickCreate base={base} compact />
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                aria-label="Toggle theme"
+              >
+                {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="ml-1 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary-hover text-primary-foreground text-xs font-semibold">
+                        {initials(user?.name ?? user?.email ?? "?")}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="text-sm font-medium">{user?.name ?? "Account"}</div>
+                    {user?.email ? <div className="text-2xs text-muted-foreground">{user.email}</div> : null}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href={`${base}/settings`}>
+                      <UserIcon className="mr-2 h-4 w-4" /> Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await signOut({ redirect: false });
+                      router.push("/login");
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </header>
+
+          <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-6 md:px-8 md:py-8">
+            {children}
+          </main>
+        </div>
+
+        <CommandPalette organizationSlug={organization.slug} open={paletteOpen} onOpenChange={setPaletteOpen} />
+      </div>
+    </TooltipProvider>
   );
 }

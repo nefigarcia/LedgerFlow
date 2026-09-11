@@ -4,11 +4,15 @@ import { requireOrgAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MetricCard } from "@/components/metric-card";
-import { Badge } from "@/components/ui/badge";
+import { MetricTile, MetricGroup } from "@/components/ui/metric-tile";
+import { StatusBadge, invoiceStatusToBadge } from "@/components/ui/status-badge";
+import { Money } from "@/components/ui/money";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney, moneySum } from "@/lib/money/money";
+import { Button } from "@/components/ui/button";
+import { moneySum, toNumber } from "@/lib/money/money";
 import { formatDate } from "@/lib/dates/dates";
+import { initials } from "@/lib/utils";
+import { ArrowLeft, ExternalLink, Mail, Phone } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -42,32 +46,60 @@ export default async function ClientDetail({
   const base = `/app/${organizationSlug}`;
 
   return (
-    <div>
-      <PageHeader
-        title={client.companyName}
-        description={
-          <span>
-            {client.contactName ?? "—"}
-            {client.email ? <span className="ml-2 text-muted-foreground">{client.email}</span> : null}
-          </span>
-        }
-        actions={<Link href={`${base}/invoices/new?clientId=${client.id}`} className="text-sm font-medium text-primary hover:underline">New invoice →</Link>}
-      />
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <MetricCard label="Outstanding" value={formatMoney(outstanding, org.currency)} />
-        <MetricCard label="Lifetime revenue" value={formatMoney(lifetime, org.currency)} />
-        <MetricCard label="Payments received" value={formatMoney(paid, org.currency)} />
-        <MetricCard label="Projects" value={String(projects.length)} />
+    <div className="space-y-6">
+      <Link href={`${base}/clients`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> All clients
+      </Link>
+
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary text-lg font-semibold">
+            {initials(client.companyName)}
+          </div>
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+              {client.companyName}
+              <StatusBadge status={client.active ? "active" : "archived"} />
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {client.contactName ? <span>{client.contactName}</span> : null}
+              {client.email ? (
+                <a href={`mailto:${client.email}`} className="flex items-center gap-1 hover:text-foreground">
+                  <Mail className="h-3.5 w-3.5" /> {client.email}
+                </a>
+              ) : null}
+              {client.phone ? (
+                <a href={`tel:${client.phone}`} className="flex items-center gap-1 hover:text-foreground">
+                  <Phone className="h-3.5 w-3.5" /> {client.phone}
+                </a>
+              ) : null}
+              {client.website ? (
+                <a href={client.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" /> {client.website.replace(/^https?:\/\//, "")}
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button asChild variant="outline"><Link href={`${base}/projects?new=1&clientId=${client.id}`}>New project</Link></Button>
+          <Button asChild><Link href={`${base}/invoices/new?clientId=${client.id}`}>New invoice</Link></Button>
+        </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <MetricGroup columns={4}>
+        <MetricTile label="Outstanding" value={<Money value={outstanding} currency={org.currency} size="lg" />} emphasis={toNumber(outstanding) > 0 ? "warning" : "default"} compact />
+        <MetricTile label="Lifetime revenue" value={<Money value={lifetime} currency={org.currency} size="lg" />} compact />
+        <MetricTile label="Payments received" value={<Money value={paid} currency={org.currency} size="lg" tone="positive" />} compact />
+        <MetricTile label="Projects" value={String(projects.length)} compact />
+      </MetricGroup>
+
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle>Invoices</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardHeader><CardTitle>Invoices</CardTitle></CardHeader>
+          <CardContent className="p-0">
             {client.invoices.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No invoices yet.</p>
+              <p className="p-5 text-sm text-muted-foreground">No invoices yet.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -82,13 +114,13 @@ export default async function ClientDetail({
                   {client.invoices.map((i) => (
                     <TableRow key={i.id}>
                       <TableCell>
-                        <Link href={`${base}/invoices/${i.id}`} className="hover:underline">
+                        <Link href={`${base}/invoices/${i.id}`} className="font-medium hover:text-primary hover:underline">
                           {i.invoiceNumber}
                         </Link>
                       </TableCell>
-                      <TableCell>{formatDate(i.issueDate)}</TableCell>
-                      <TableCell className="text-right num">{formatMoney(i.total, org.currency)}</TableCell>
-                      <TableCell><StatusBadge status={i.status} /></TableCell>
+                      <TableCell className="text-muted-foreground">{formatDate(i.issueDate)}</TableCell>
+                      <TableCell className="text-right"><Money value={i.total} currency={org.currency} /></TableCell>
+                      <TableCell><StatusBadge status={invoiceStatusToBadge(i.status, i.dueDate)} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -98,12 +130,10 @@ export default async function ClientDetail({
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Recent payments</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardHeader><CardTitle>Recent payments</CardTitle></CardHeader>
+          <CardContent className="p-0">
             {client.payments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No payments yet.</p>
+              <p className="p-5 text-sm text-muted-foreground">No payments yet.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -117,8 +147,8 @@ export default async function ClientDetail({
                   {client.payments.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{formatDate(p.date)}</TableCell>
-                      <TableCell>{p.method}</TableCell>
-                      <TableCell className="text-right num">{formatMoney(p.amount, org.currency)}</TableCell>
+                      <TableCell className="text-muted-foreground">{p.method}</TableCell>
+                      <TableCell className="text-right"><Money value={p.amount} currency={org.currency} tone="positive" /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -129,25 +159,11 @@ export default async function ClientDetail({
       </div>
 
       {client.notes ? (
-        <Card className="mt-6">
+        <Card>
           <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
-          <CardContent className="whitespace-pre-line text-sm">{client.notes}</CardContent>
+          <CardContent className="whitespace-pre-line text-sm text-foreground/80">{client.notes}</CardContent>
         </Card>
       ) : null}
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { variant: any; label: string }> = {
-    DRAFT: { variant: "muted", label: "Draft" },
-    SENT: { variant: "secondary", label: "Sent" },
-    VIEWED: { variant: "secondary", label: "Viewed" },
-    PARTIALLY_PAID: { variant: "warning", label: "Partial" },
-    PAID: { variant: "success", label: "Paid" },
-    OVERDUE: { variant: "destructive", label: "Overdue" },
-    VOID: { variant: "muted", label: "Void" },
-  };
-  const v = map[status] ?? map.DRAFT;
-  return <Badge variant={v.variant}>{v.label}</Badge>;
 }

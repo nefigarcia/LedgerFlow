@@ -4,9 +4,10 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatMoney, moneySum, moneyMultiply } from "@/lib/money/money";
+import { MetricTile, MetricGroup } from "@/components/ui/metric-tile";
+import { Money } from "@/components/ui/money";
+import { moneySum, moneyMultiply } from "@/lib/money/money";
 import { formatDate } from "@/lib/dates/dates";
-import { MetricCard } from "@/components/metric-card";
 import { TimeEntryDialog } from "./time-entry-dialog";
 import { Clock } from "lucide-react";
 
@@ -45,27 +46,39 @@ export default async function TimePage({
     unbilled.map((e) => moneyMultiply(e.hours, e.hourlyRate ?? e.project.hourlyRate ?? 0)),
   );
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title="Time"
-        description="Log billable and non-billable hours by project."
-        actions={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))} defaultOpen={Boolean(openNew)} />}
+        eyebrow="Time"
+        title="Log billable and non-billable hours"
+        description="Time entries can later be converted into invoice line items."
+        actions={
+          <TimeEntryDialog
+            organizationSlug={organizationSlug}
+            projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))}
+            defaultOpen={Boolean(openNew)}
+          />
+        }
       />
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        <MetricCard label="Unbilled hours" value={unbilledHours.toFixed(2)} />
-        <MetricCard label="Unbilled value" value={formatMoney(unbilledValue, org.currency)} />
-        <MetricCard label="Entries" value={String(entries.length)} />
-      </div>
+      <MetricGroup columns={3}>
+        <MetricTile label="Unbilled hours" value={unbilledHours.toFixed(2)} subValue="Ready to invoice" compact />
+        <MetricTile label="Unbilled value" value={<Money value={unbilledValue} currency={org.currency} size="lg" />} compact />
+        <MetricTile label="Recent entries" value={String(entries.length)} compact />
+      </MetricGroup>
 
-      <Card className="mt-6">
+      <Card>
         <CardContent className="p-0">
           {entries.length === 0 ? (
             <div className="p-6">
               <EmptyState
-                icon={<Clock className="h-8 w-8" />}
+                icon={<Clock className="h-6 w-6" />}
                 title="Log your first time entry"
                 description="Time entries can later be converted into invoice line items."
-                action={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))} />}
+                action={
+                  <TimeEntryDialog
+                    organizationSlug={organizationSlug}
+                    projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))}
+                  />
+                }
               />
             </div>
           ) : (
@@ -83,15 +96,21 @@ export default async function TimePage({
               <TableBody>
                 {entries.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell>{formatDate(e.date)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(e.date)}</TableCell>
                     <TableCell>{e.project.name}</TableCell>
-                    <TableCell className="max-w-[280px] truncate">{e.description ?? "—"}</TableCell>
+                    <TableCell className="max-w-[280px] truncate text-muted-foreground">{e.description ?? "—"}</TableCell>
                     <TableCell className="text-right num">{e.hours.toString()}</TableCell>
-                    <TableCell className="text-right num">
-                      {e.hourlyRate ? formatMoney(e.hourlyRate, org.currency) : "—"}
+                    <TableCell className="text-right">
+                      {e.hourlyRate ? <Money value={e.hourlyRate} currency={org.currency} /> : <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {!e.billable ? "Non-billable" : e.invoiceItemId ? "Invoiced" : "Unbilled"}
+                    <TableCell>
+                      {!e.billable ? (
+                        <span className="chip chip-muted">Non-billable</span>
+                      ) : e.invoiceItemId ? (
+                        <span className="chip chip-success">Invoiced</span>
+                      ) : (
+                        <span className="chip chip-warning">Unbilled</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

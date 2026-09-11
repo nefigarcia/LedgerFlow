@@ -2,12 +2,12 @@ import Link from "next/link";
 import { requireOrgAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { PageHeader } from "@/components/page-header";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, projectStatusToBadge } from "@/components/ui/status-badge";
+import { Money } from "@/components/ui/money";
 import { ProjectDialog } from "./project-dialog";
-import { formatMoney } from "@/lib/money/money";
 import { FolderKanban } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -38,46 +38,55 @@ export default async function ProjectsPage({
       orderBy: { companyName: "asc" },
     }),
   ]);
+  const base = `/app/${organizationSlug}`;
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title="Projects"
-        description="Client engagements you're delivering work against."
+        eyebrow="Projects"
+        title="Client engagements"
+        description="Group time, expenses, and invoice items by project."
         actions={<ProjectDialog organizationSlug={organizationSlug} clients={clients} defaultOpen={Boolean(openNew)} />}
       />
       {projects.length === 0 ? (
         <EmptyState
-          icon={<FolderKanban className="h-8 w-8" />}
+          icon={<FolderKanban className="h-6 w-6" />}
           title="Add your first project"
           description="Projects belong to a client. Use them to group time entries, expenses, and invoice items."
           action={<ProjectDialog organizationSlug={organizationSlug} clients={clients} />}
         />
       ) : (
         <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Billing</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Budget</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projects.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell><Link href={`./projects/${p.id}`} className="font-medium hover:underline">{p.name}</Link></TableCell>
-                  <TableCell>{p.client.companyName}</TableCell>
-                  <TableCell className="text-sm">{p.billingMethod}</TableCell>
-                  <TableCell><Badge variant={p.status === "ACTIVE" ? "success" : "muted"}>{p.status}</Badge></TableCell>
-                  <TableCell className="text-right num">
-                    {p.budget ? formatMoney(p.budget, org.currency) : "—"}
-                  </TableCell>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Billing</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Budget</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {projects.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <Link href={`${base}/projects/${p.id}`} className="font-medium hover:text-primary hover:underline">
+                        {p.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{p.client.companyName}</TableCell>
+                    <TableCell><span className="chip chip-muted">{p.billingMethod.replace("_", " ").toLowerCase()}</span></TableCell>
+                    <TableCell><StatusBadge status={projectStatusToBadge(p.status)} /></TableCell>
+                    <TableCell className="text-right">
+                      {p.budget ? <Money value={p.budget} currency={org.currency} /> : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
       )}
     </div>

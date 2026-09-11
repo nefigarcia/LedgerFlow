@@ -206,15 +206,20 @@ export function OnboardingWizard({ userName }: { userName: string }) {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
+    <div className="relative min-h-screen bg-background">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-96 -z-10 bg-gradient-to-b from-primary-soft/40 to-transparent" aria-hidden />
+      <header className="border-b border-border/70 bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <BrandMark />
-          <p className="text-sm text-muted-foreground">{BRAND.tagline}</p>
+          <p className="hidden text-2xs uppercase tracking-widest text-muted-foreground md:block">{BRAND.tagline}</p>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-10">
-        <div className="mb-6 flex items-center gap-2 text-sm">
+        <div className="mb-6 text-center">
+          <div className="text-2xs font-medium uppercase tracking-widest text-muted-foreground">Set up your workspace</div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Let&apos;s get your business in shape.</h1>
+        </div>
+        <div className="mb-8 flex items-center justify-center gap-2 text-sm">
           {["Business", "Owners", "Defaults", "Finish"].map((label, i) => {
             const s = i + 1;
             const active = step === s;
@@ -222,14 +227,14 @@ export function OnboardingWizard({ userName }: { userName: string }) {
             return (
               <div key={label} className="flex items-center gap-2">
                 <span
-                  className={`grid h-6 w-6 place-items-center rounded-full text-xs font-medium ${
-                    done ? "bg-success text-success-foreground" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  className={`grid h-7 w-7 place-items-center rounded-full text-xs font-medium transition-colors ${
+                    done ? "bg-success text-success-foreground" : active ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {done ? <CheckCircle2 className="h-4 w-4" /> : s}
+                  {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : s}
                 </span>
-                <span className={active ? "font-medium" : "text-muted-foreground"}>{label}</span>
-                {s < 4 ? <span className="mx-1 text-muted-foreground">›</span> : null}
+                <span className={active ? "text-sm font-medium" : "hidden text-sm text-muted-foreground sm:inline"}>{label}</span>
+                {s < 4 ? <span className="mx-1 hidden text-muted-foreground sm:inline">›</span> : null}
               </div>
             );
           })}

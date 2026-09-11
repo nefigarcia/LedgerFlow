@@ -2,13 +2,20 @@ import { requireOrgAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { getForecast } from "@/services/financial-metrics";
 import { PageHeader } from "@/components/page-header";
-import { MetricCard } from "@/components/metric-card";
+import { MetricTile, MetricGroup } from "@/components/ui/metric-tile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Money } from "@/components/ui/money";
 import { formatMoney } from "@/lib/money/money";
 import { Info } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+const SCENARIOS = [
+  { key: "conservative", label: "Conservative", revenue: 0.85, expenses: 1.05, description: "Revenue misses by 15%, expenses drift up 5%." },
+  { key: "base",         label: "Base",         revenue: 1.00, expenses: 1.00, description: "Recent months continue at their current pace." },
+  { key: "optimistic",   label: "Optimistic",   revenue: 1.15, expenses: 0.95, description: "Revenue exceeds by 15%, expenses tighten 5%." },
+];
 
 export default async function ForecastPage({
   params,
@@ -24,44 +31,73 @@ export default async function ForecastPage({
     }),
     getForecast({ organizationId: ctx.organizationId }),
   ]);
-  const scenarios = {
-    conservative: 0.85,
-    base: 1.0,
-    optimistic: 1.15,
-  };
+
+  const taxRateFromBase = base.projectedProfit > 0 ? base.projectedTaxReserve / base.projectedProfit : 0;
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title="Forecast"
-        description="Simple run-rate projections based on recorded activity."
+        eyebrow="Forecast"
+        title="Where the year is heading"
+        description="Deterministic run-rate projections from your recent months."
       />
-      <Alert variant="info" className="mb-6">
+
+      <Alert variant="info">
         <Info className="h-4 w-4" />
-        <AlertDescription>
-          Forecasts extrapolate from recent months. They are planning estimates, not guarantees.
+        <AlertDescription className="text-xs">
+          Forecasts extrapolate from months with recorded activity. Adjust scenarios by changing the projection factor.
+          These are planning estimates, not guarantees.
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Avg monthly revenue" value={formatMoney(base.averageMonthlyRevenue, org.currency)} />
-        <MetricCard label="Avg monthly expenses" value={formatMoney(base.averageMonthlyExpenses, org.currency)} />
-        <MetricCard label="Projected annual profit" value={formatMoney(base.projectedProfit, org.currency)} emphasis="positive" />
-      </div>
+      <MetricGroup columns={3}>
+        <MetricTile
+          label="Average monthly revenue"
+          value={formatMoney(base.averageMonthlyRevenue, org.currency)}
+          subValue="From active months"
+        />
+        <MetricTile
+          label="Average monthly expenses"
+          value={formatMoney(base.averageMonthlyExpenses, org.currency)}
+          subValue="Business only, deductible"
+        />
+        <MetricTile
+          label="Projected annual profit"
+          value={formatMoney(base.projectedProfit, org.currency)}
+          subValue={`Net after tax reserve: ${formatMoney(base.projectedNetAfterTax, org.currency)}`}
+          emphasis={base.projectedProfit >= 0 ? "positive" : "danger"}
+        />
+      </MetricGroup>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-3">
-        {Object.entries(scenarios).map(([label, factor]) => {
-          const rev = base.projectedRevenue * factor;
-          const exp = base.projectedExpenses * (factor === 1 ? 1 : factor === 0.85 ? 1.05 : 0.95);
+      <div className="grid gap-4 md:grid-cols-3">
+        {SCENARIOS.map((s) => {
+          const rev = base.projectedRevenue * s.revenue;
+          const exp = base.projectedExpenses * s.expenses;
           const profit = rev - exp;
+          const tax = Math.max(0, profit * taxRateFromBase);
+          const net = profit - tax;
+          const isBase = s.key === "base";
           return (
-            <Card key={label}>
-              <CardHeader className="capitalize"><CardTitle>{label}</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm">
+            <Card key={s.key} className={isBase ? "border-primary/40 ring-1 ring-primary/20" : undefined}>
+              <CardHeader className="border-b pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">{s.label}</CardTitle>
+                  {isBase ? (
+                    <span className="chip chip-primary">Baseline</span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">{s.description}</p>
+              </CardHeader>
+              <CardContent className="space-y-3 p-5">
                 <Row label="Revenue" value={formatMoney(rev, org.currency)} />
-                <Row label="Expenses" value={formatMoney(exp, org.currency)} />
-                <Row label="Profit" value={formatMoney(profit, org.currency)} bold />
-                <Row label="Est. tax reserve" value={formatMoney(Math.max(0, profit * base.projectedTaxReserve / (base.projectedProfit || 1)), org.currency)} />
-                <Row label="Net after tax" value={formatMoney(profit - Math.max(0, profit * base.projectedTaxReserve / (base.projectedProfit || 1)), org.currency)} bold />
+                <Row label="Expenses" value={`− ${formatMoney(exp, org.currency)}`} muted />
+                <div className="border-t border-border pt-3">
+                  <Row label="Profit" value={<Money value={profit} currency={org.currency} tone={profit >= 0 ? "positive" : "negative"} />} bold />
+                </div>
+                <Row label="Est. tax reserve" value={`− ${formatMoney(tax, org.currency)}`} muted />
+                <div className="border-t border-border pt-3">
+                  <Row label="Net after tax" value={<Money value={net} currency={org.currency} size="lg" tone={net >= 0 ? "positive" : "negative"} />} bold />
+                </div>
               </CardContent>
             </Card>
           );
@@ -71,11 +107,11 @@ export default async function ForecastPage({
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function Row({ label, value, bold, muted }: { label: string; value: React.ReactNode; bold?: boolean; muted?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className={bold ? "font-semibold" : "text-muted-foreground"}>{label}</span>
-      <span className={`num ${bold ? "font-semibold" : ""}`}>{value}</span>
+    <div className="flex items-baseline justify-between text-sm">
+      <span className={bold ? "font-semibold" : muted ? "text-muted-foreground" : "text-muted-foreground"}>{label}</span>
+      <span className={`num ${bold ? "font-semibold" : muted ? "text-muted-foreground" : "font-medium"}`}>{value}</span>
     </div>
   );
 }

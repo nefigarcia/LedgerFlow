@@ -56,7 +56,7 @@ export function RegisterForm() {
       <Field label="Password" htmlFor="password" hint="Minimum 8 characters." error={errors.password} required>
         <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
       </Field>
-      <Button type="submit" className="w-full" disabled={pending}>
+      <Button type="submit" className="w-full" size="lg" disabled={pending}>
         {pending ? "Creating account…" : "Create account"}
       </Button>
     </form>

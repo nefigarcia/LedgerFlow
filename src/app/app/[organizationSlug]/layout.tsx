@@ -12,7 +12,7 @@ export default async function OrgLayout({
 }) {
   const { organizationSlug } = await params;
   const ctx = await requireOrgAccess(organizationSlug);
-  const [org, memberships] = await Promise.all([
+  const [org, memberships, user] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: ctx.organizationId },
       select: {
@@ -25,6 +25,10 @@ export default async function OrgLayout({
       },
     }),
     getUserOrganizations(ctx.userId),
+    prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { name: true, email: true, image: true },
+    }),
   ]);
   if (!org) redirect("/app");
 
@@ -37,6 +41,7 @@ export default async function OrgLayout({
         name: m.organization.name,
         slug: m.organization.slug,
       }))}
+      user={user}
     >
       {children}
     </AppShell>

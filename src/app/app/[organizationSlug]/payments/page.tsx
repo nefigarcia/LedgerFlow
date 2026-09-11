@@ -1,11 +1,14 @@
 import { requireOrgAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
 import { PageHeader } from "@/components/page-header";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatMoney } from "@/lib/money/money";
+import { Money } from "@/components/ui/money";
+import { MetricTile, MetricGroup } from "@/components/ui/metric-tile";
+import { moneySum } from "@/lib/money/money";
 import { formatDate } from "@/lib/dates/dates";
+import { startOfMonth, startOfYear } from "date-fns";
 import { RecordPaymentDialog } from "./record-payment-dialog";
 import { CreditCard } from "lucide-react";
 
@@ -46,11 +49,16 @@ export default async function PaymentsPage({
       orderBy: { companyName: "asc" },
     }),
   ]);
+  const now = new Date();
+  const monthTotal = moneySum(payments.filter((p) => p.date >= startOfMonth(now)).map((p) => p.amount));
+  const ytdTotal = moneySum(payments.filter((p) => p.date >= startOfYear(now)).map((p) => p.amount));
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title="Payments"
-        description="Every payment you record adds to recorded cash and updates invoice balances."
+        eyebrow="Payments"
+        title="What you've collected"
+        description="Every recorded payment adds to cash and clears invoice balances."
         actions={
           <RecordPaymentDialog
             organizationSlug={organizationSlug}
@@ -66,20 +74,29 @@ export default async function PaymentsPage({
           />
         }
       />
+
+      {payments.length > 0 && (
+        <MetricGroup columns={3}>
+          <MetricTile label="This month" value={<Money value={monthTotal} currency={org.currency} size="lg" tone="positive" />} compact />
+          <MetricTile label="Year to date" value={<Money value={ytdTotal} currency={org.currency} size="lg" tone="positive" />} compact />
+          <MetricTile label="Total payments" value={String(payments.length)} compact />
+        </MetricGroup>
+      )}
+
       {payments.length === 0 ? (
         <EmptyState
-          icon={<CreditCard className="h-8 w-8" />}
+          icon={<CreditCard className="h-6 w-6" />}
           title="No payments recorded yet"
           description="Payments you record will appear here and roll into your dashboard immediately."
           action={
             <RecordPaymentDialog
               organizationSlug={organizationSlug}
               openInvoices={openInvoices.map((i) => ({
-              id: i.id,
-              invoiceNumber: i.invoiceNumber,
-              balanceDue: i.balanceDue.toString(),
-              clientId: i.clientId,
-            }))}
+                id: i.id,
+                invoiceNumber: i.invoiceNumber,
+                balanceDue: i.balanceDue.toString(),
+                clientId: i.clientId,
+              }))}
               clients={clients}
               triggerLabel="Record first payment"
             />
@@ -87,30 +104,32 @@ export default async function PaymentsPage({
         />
       ) : (
         <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Invoice</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payments.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>{formatDate(p.date)}</TableCell>
-                  <TableCell>{p.invoice?.invoiceNumber ?? "—"}</TableCell>
-                  <TableCell>{p.client?.companyName ?? "—"}</TableCell>
-                  <TableCell>{p.method}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{p.reference ?? "—"}</TableCell>
-                  <TableCell className="text-right num">{formatMoney(p.amount, org.currency)}</TableCell>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {payments.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="text-muted-foreground">{formatDate(p.date)}</TableCell>
+                    <TableCell>{p.invoice?.invoiceNumber ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>{p.client?.companyName ?? <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell><span className="chip chip-muted">{p.method}</span></TableCell>
+                    <TableCell className="text-2xs text-muted-foreground">{p.reference ?? "—"}</TableCell>
+                    <TableCell className="text-right"><Money value={p.amount} currency={org.currency} tone="positive" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
       )}
     </div>

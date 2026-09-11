@@ -1,17 +1,7 @@
 "use client";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 import { formatMoney } from "@/lib/money/money";
-
-const COLORS = [
-  "hsl(222,47%,20%)",
-  "hsl(152,55%,38%)",
-  "hsl(38,92%,50%)",
-  "hsl(210,60%,50%)",
-  "hsl(0,72%,55%)",
-  "hsl(275,50%,50%)",
-  "hsl(190,60%,45%)",
-  "hsl(35,60%,45%)",
-];
+import { CHART_SERIES, CHART_TOOLTIP_STYLE } from "./chart-theme";
 
 export function CategoryDonut({
   data,
@@ -24,22 +14,43 @@ export function CategoryDonut({
   dataKey?: string;
   nameKey?: string;
 }) {
+  const total = data.reduce((s, d) => s + (Number(d[dataKey]) || 0), 0);
   return (
-    <div className="h-64 w-full">
+    <div className="relative h-64 w-full">
       <ResponsiveContainer>
         <PieChart>
-          <Pie data={data} dataKey={dataKey} nameKey={nameKey} innerRadius={50} outerRadius={90} strokeWidth={2}>
+          <Pie
+            data={data}
+            dataKey={dataKey}
+            nameKey={nameKey}
+            innerRadius={62}
+            outerRadius={92}
+            paddingAngle={1}
+            stroke="hsl(var(--surface))"
+            strokeWidth={2}
+          >
             {data.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              <Cell key={i} fill={CHART_SERIES[i % CHART_SERIES.length]} />
             ))}
           </Pie>
           <Tooltip
             formatter={(v: number) => formatMoney(v, currency)}
-            contentStyle={{ background: "hsl(var(--popover))", borderColor: "hsl(var(--border))", borderRadius: 8 }}
+            contentStyle={CHART_TOOLTIP_STYLE}
           />
-          <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 11 }} />
+          <Legend
+            verticalAlign="bottom"
+            iconType="circle"
+            iconSize={8}
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+          />
         </PieChart>
       </ResponsiveContainer>
+      {total > 0 ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-8 text-center">
+          <div className="text-2xs font-medium uppercase tracking-widest text-muted-foreground">Total</div>
+          <div className="num mt-0.5 text-lg font-semibold">{formatMoney(total, currency)}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
