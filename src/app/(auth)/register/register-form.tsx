@@ -31,6 +31,10 @@ export function RegisterForm() {
             toast.error("Could not create account", { description: res.error.message });
             return;
           }
+          // Meta Pixel tracking for CompleteRegistration event
+          if (typeof window !== "undefined" && typeof window.fbq === "function") {
+          window.fbq("track", "CompleteRegistration");
+          }
           const login = await signIn("credentials", {
             email: String(fd.get("email") ?? "").trim().toLowerCase(),
             password: String(fd.get("password") ?? ""),
