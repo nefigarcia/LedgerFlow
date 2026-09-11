@@ -5,6 +5,8 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { BRAND } from "@/lib/brand";
 import { Analytics } from "@vercel/analytics/next";
+import { Suspense } from "react";
+import { MetaPixel } from "@/components/analytics/MetaPixel";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,11 +33,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${mono.variable}`}>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+        <Suspense fallback={null}>
+          <MetaPixel />
+        </Suspense>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
           <Toaster richColors closeButton position="top-right" toastOptions={{ duration: 3800 }} />
         </ThemeProvider>
         {process.env.NODE_ENV === "production" ? <Analytics /> : null}
+      <Analytics />
       </body>
     </html>
   );
