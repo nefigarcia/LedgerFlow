@@ -97,13 +97,24 @@ export function formatMoney(
   options?: Intl.NumberFormatOptions,
 ): string {
   const locale = CURRENCY_LOCALES[currency] ?? "en-US";
-  return new Intl.NumberFormat(locale, {
+  // Merge caller options over defaults, then clamp so min ≤ max
+  // (Intl.NumberFormat throws RangeError otherwise, e.g. when a caller
+  // asks for maximumFractionDigits: 0 for a compact axis label).
+  const merged: Intl.NumberFormatOptions = {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
     ...options,
-  }).format(toNumber(value));
+  };
+  if (
+    merged.minimumFractionDigits != null &&
+    merged.maximumFractionDigits != null &&
+    merged.minimumFractionDigits > merged.maximumFractionDigits
+  ) {
+    merged.minimumFractionDigits = merged.maximumFractionDigits;
+  }
+  return new Intl.NumberFormat(locale, merged).format(toNumber(value));
 }
 
 export function formatPercent(
