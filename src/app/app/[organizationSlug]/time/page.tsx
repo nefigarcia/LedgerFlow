@@ -49,7 +49,7 @@ export default async function TimePage({
       <PageHeader
         title="Time"
         description="Log billable and non-billable hours by project."
-        actions={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects} defaultOpen={Boolean(openNew)} />}
+        actions={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))} defaultOpen={Boolean(openNew)} />}
       />
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <MetricCard label="Unbilled hours" value={unbilledHours.toFixed(2)} />
@@ -65,7 +65,7 @@ export default async function TimePage({
                 icon={<Clock className="h-8 w-8" />}
                 title="Log your first time entry"
                 description="Time entries can later be converted into invoice line items."
-                action={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects} />}
+                action={<TimeEntryDialog organizationSlug={organizationSlug} projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))} />}
               />
             </div>
           ) : (

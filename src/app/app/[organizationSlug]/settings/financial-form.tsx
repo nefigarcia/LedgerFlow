@@ -8,12 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
 import { updateFinancialSettingsAction } from "@/features/settings/actions";
 
+interface FinancialOrg {
+  currency: string;
+  fiscalYearStartMonth: number;
+  openingBalance: string;
+  minimumOperatingReserve: string;
+  defaultTaxReserveRate: string;
+}
+
 export function FinancialSettingsForm({
   organizationSlug,
   org,
 }: {
   organizationSlug: string;
-  org: any;
+  org: FinancialOrg;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();

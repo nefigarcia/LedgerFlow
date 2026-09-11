@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/money/money";
 import { computeInvoiceTotals } from "@/services/invoice-calc";
 
 interface Client { id: string; companyName: string; }
-interface Project { id: string; name: string; hourlyRate: any; clientId: string; }
+interface Project { id: string; name: string; hourlyRate: string | null; clientId: string; }
 interface Item { description: string; quantity: string; unit: string; rate: string; projectId?: string | null }
 
 const UNITS = ["HOURS", "ITEMS", "DAYS", "FLAT", "OTHER"];

@@ -14,7 +14,7 @@ const METHODS = ["ACH", "CHECK", "WIRE", "CREDIT_CARD", "CASH", "OTHER"];
 
 interface Props {
   organizationSlug: string;
-  openInvoices?: { id: string; invoiceNumber: string; balanceDue: any; clientId: string | null }[];
+  openInvoices?: { id: string; invoiceNumber: string; balanceDue: string; clientId: string | null }[];
   clients?: { id: string; companyName: string }[];
   invoiceId?: string;
   invoiceNumber?: string;

@@ -10,12 +10,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { upsertOwnerAction } from "@/features/settings/actions";
 import { Plus, Save } from "lucide-react";
 
+interface OwnerRow {
+  id: string;
+  name: string;
+  email: string | null;
+  ownershipPercentage: string;
+  distributionPercentage: string;
+  taxReserveOverride: string | null;
+  active: boolean;
+}
+
 export function OwnersSection({
   organizationSlug,
   owners,
 }: {
   organizationSlug: string;
-  owners: any[];
+  owners: OwnerRow[];
 }) {
   const [pending, start] = useTransition();
   const [creating, setCreating] = useState(false);

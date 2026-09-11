@@ -50,7 +50,7 @@ export default async function DistributionsPage({
         actions={
           <DistributionDialog
             organizationSlug={organizationSlug}
-            owners={owners}
+            owners={owners.map((o) => ({ id: o.id, name: o.name }))}
             defaultOpen={Boolean(openNew)}
           />
         }

@@ -41,16 +41,49 @@ export default async function SettingsPage({
           <TabsTrigger value="ai">AI</TabsTrigger>
         </TabsList>
         <TabsContent value="financial">
-          <FinancialSettingsForm organizationSlug={organizationSlug} org={org} />
+          <FinancialSettingsForm
+            organizationSlug={organizationSlug}
+            org={{
+              currency: org.currency,
+              fiscalYearStartMonth: org.fiscalYearStartMonth,
+              openingBalance: org.openingBalance.toString(),
+              minimumOperatingReserve: org.minimumOperatingReserve.toString(),
+              defaultTaxReserveRate: org.defaultTaxReserveRate.toString(),
+            }}
+          />
         </TabsContent>
         <TabsContent value="invoice">
-          <InvoiceSettingsForm organizationSlug={organizationSlug} org={org} />
+          <InvoiceSettingsForm
+            organizationSlug={organizationSlug}
+            org={{
+              invoicePrefix: org.invoicePrefix,
+              invoiceNextNumber: org.invoiceNextNumber,
+              defaultPaymentTermsDays: org.defaultPaymentTermsDays,
+            }}
+          />
         </TabsContent>
         <TabsContent value="owners">
-          <OwnersSection organizationSlug={organizationSlug} owners={owners} />
+          <OwnersSection
+            organizationSlug={organizationSlug}
+            owners={owners.map((o) => ({
+              id: o.id,
+              name: o.name,
+              email: o.email,
+              ownershipPercentage: o.ownershipPercentage.toString(),
+              distributionPercentage: o.distributionPercentage.toString(),
+              taxReserveOverride: o.taxReserveOverride?.toString() ?? null,
+              active: o.active,
+            }))}
+          />
         </TabsContent>
         <TabsContent value="members">
-          <MembersSection memberships={memberships} />
+          <MembersSection
+            memberships={memberships.map((m) => ({
+              id: m.id,
+              role: m.role,
+              user: { id: m.user.id, name: m.user.name, email: m.user.email },
+            }))}
+          />
         </TabsContent>
         <TabsContent value="ai">
           <div className="rounded-lg border p-6 text-sm">

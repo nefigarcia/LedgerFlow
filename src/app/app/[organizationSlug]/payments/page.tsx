@@ -54,7 +54,12 @@ export default async function PaymentsPage({
         actions={
           <RecordPaymentDialog
             organizationSlug={organizationSlug}
-            openInvoices={openInvoices}
+            openInvoices={openInvoices.map((i) => ({
+              id: i.id,
+              invoiceNumber: i.invoiceNumber,
+              balanceDue: i.balanceDue.toString(),
+              clientId: i.clientId,
+            }))}
             clients={clients}
             defaultOpen={Boolean(openNew)}
             triggerLabel="Record payment"
@@ -69,7 +74,12 @@ export default async function PaymentsPage({
           action={
             <RecordPaymentDialog
               organizationSlug={organizationSlug}
-              openInvoices={openInvoices}
+              openInvoices={openInvoices.map((i) => ({
+              id: i.id,
+              invoiceNumber: i.invoiceNumber,
+              balanceDue: i.balanceDue.toString(),
+              clientId: i.clientId,
+            }))}
               clients={clients}
               triggerLabel="Record first payment"
             />

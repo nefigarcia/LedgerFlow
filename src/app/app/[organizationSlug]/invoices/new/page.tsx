@@ -44,7 +44,12 @@ export default async function NewInvoicePage({
         organizationSlug={organizationSlug}
         currency={org.currency}
         clients={clients}
-        projects={projects}
+        projects={projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          hourlyRate: p.hourlyRate?.toString() ?? null,
+          clientId: p.clientId,
+        }))}
         defaults={{ issueDate: today, dueDate: due, preselectedClientId: preselectedClient ?? null }}
       />
     </div>

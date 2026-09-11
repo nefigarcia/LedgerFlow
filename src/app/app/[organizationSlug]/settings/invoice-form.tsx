@@ -9,12 +9,18 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
 import { updateInvoiceSettingsAction } from "@/features/settings/actions";
 
+interface InvoiceOrg {
+  invoicePrefix: string;
+  invoiceNextNumber: number;
+  defaultPaymentTermsDays: number;
+}
+
 export function InvoiceSettingsForm({
   organizationSlug,
   org,
 }: {
   organizationSlug: string;
-  org: any;
+  org: InvoiceOrg;
 }) {
   const [pending, start] = useTransition();
   const router = useRouter();
