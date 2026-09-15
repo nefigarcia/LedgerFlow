@@ -102,7 +102,7 @@ export async function renderInvoicePdf(invoice: InvoiceWithRelations): Promise<B
       if (Number(invoice.discount) > 0)
         drawRow("Discount", "− " + formatMoney(invoice.discount.toString(), currency));
       if (Number(invoice.taxAmount) > 0)
-        drawRow(`Tax (${invoice.taxRate.toString()}%)`, formatMoney(invoice.taxAmount.toString(), currency));
+        drawRow(`Sales tax (${invoice.taxRate.toString()}%)`, formatMoney(invoice.taxAmount.toString(), currency));
       drawRow("Total", formatMoney(invoice.total.toString(), currency), true);
       if (Number(invoice.amountPaid) > 0) {
         drawRow("Amount paid", formatMoney(invoice.amountPaid.toString(), currency));

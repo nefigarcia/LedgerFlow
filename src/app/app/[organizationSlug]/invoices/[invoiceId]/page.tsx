@@ -109,7 +109,7 @@ export default async function InvoiceDetailPage({
                   <TotalRow label="Discount" value={`− ${formatMoney(invoice.discount, invoice.currency)}`} muted />
                 )}
                 {toNumber(invoice.taxAmount) > 0 && (
-                  <TotalRow label={`Tax (${invoice.taxRate.toString()}%)`} value={formatMoney(invoice.taxAmount, invoice.currency)} muted />
+                  <TotalRow label={`Sales tax (${invoice.taxRate.toString()}%)`} value={formatMoney(invoice.taxAmount, invoice.currency)} muted />
                 )}
                 <div className="mt-2 border-t border-border pt-2">
                   <TotalRow label="Total" value={formatMoney(invoice.total, invoice.currency)} bold />

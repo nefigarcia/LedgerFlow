@@ -254,23 +254,45 @@ export async function getTaxReserveStatus({ organizationId }: OrgIdArg) {
 }
 
 /**
- * Available to distribute =
- *   max(0, recordedCash − remaining tax reserve − minimum operating reserve)
+ * Available to distribute — the core LedgerFlow calculation.
+ *
+ *     Recorded cash
+ *   − Unfunded tax reserve   (remaining reserve − cash already earmarked)
+ *   − Operating reserve
+ *   = Safe to distribute
+ *
+ * Notes:
+ *   • Earmarked cash is still recorded cash. Moving money from checking to
+ *     a "tax savings" account doesn't reduce the balance sheet.
+ *   • What earmarked cash DOES do is reduce the amount considered freely
+ *     distributable — so we only subtract the UNFUNDED portion of reserve.
+ *   • Tax reserve here is aggregated across all owners plus organization-
+ *     level obligations (via `getConsolidatedTaxReserveStatus`).
  */
 export async function getAvailableToDistribute({ organizationId }: OrgIdArg) {
+  // Lazy import to avoid circular dep at module load time.
+  const { getConsolidatedTaxReserveStatus } = await import("./tax-planning");
   const org = await getOrganization(organizationId);
   const [cash, tax] = await Promise.all([
     getRecordedCash({ organizationId }),
-    getTaxReserveStatus({ organizationId }),
+    getConsolidatedTaxReserveStatus({ organizationId }),
   ]);
   const operatingReserve = toDecimal(org.minimumOperatingReserve);
+  const unfundedReserve = toDecimal(tax.unfundedReserve);
+  const earmarked = toDecimal(tax.earmarkedCash);
   const available = moneyMax(
     0,
-    moneySubtract(moneySubtract(cash, tax.remaining), operatingReserve),
+    moneySubtract(moneySubtract(cash, unfundedReserve), operatingReserve),
   );
   return {
     recordedCash: cash,
-    taxReserveRemaining: tax.remaining,
+    // Kept for backwards compatibility with existing UI code paths.
+    // Callers should prefer the more explicit fields below.
+    taxReserveRemaining: toDecimal(tax.remainingReserve),
+    // The number that actually reduces safe-to-distribute.
+    unfundedTaxReserve: unfundedReserve,
+    // Cash the user has already set aside (does not reduce recorded cash).
+    taxReserveEarmarked: moneyRound(earmarked),
     operatingReserve: moneyRound(operatingReserve),
     available: moneyRound(available),
   };
@@ -481,7 +503,12 @@ export interface DashboardSummary {
   currency: string;
   cash: {
     recordedCash: number;
+    /// Remaining reserve target minus taxes already paid (positive number).
     taxReserveRemaining: number;
+    /// Amount already earmarked in a reserve account.
+    taxReserveEarmarked: number;
+    /// The unfunded portion — this is what reduces safe-to-distribute.
+    unfundedTaxReserve: number;
     operatingReserve: number;
     available: number;
   };
@@ -528,6 +555,8 @@ export async function getDashboardSummary(args: OrgIdArg): Promise<DashboardSumm
     cash: {
       recordedCash: toNumber(cash.recordedCash),
       taxReserveRemaining: toNumber(cash.taxReserveRemaining),
+      taxReserveEarmarked: toNumber(cash.taxReserveEarmarked),
+      unfundedTaxReserve: toNumber(cash.unfundedTaxReserve),
       operatingReserve: toNumber(cash.operatingReserve),
       available: toNumber(cash.available),
     },

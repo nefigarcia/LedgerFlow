@@ -117,6 +117,41 @@ enum TaxPaymentStatus {
   PAID
 }
 
+enum TaxPlanningMode {
+  SIMPLE
+  ADVANCED
+}
+
+enum FilingStatus {
+  SINGLE
+  MARRIED_JOINT
+  MARRIED_SEPARATE
+  HEAD_OF_HOUSEHOLD
+  QUALIFYING_SURVIVING_SPOUSE
+}
+
+enum FinancialAccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  LOAN
+  OTHER
+}
+
+enum FinancialAccountPurpose {
+  OPERATING
+  TAX_RESERVE
+  SAVINGS
+  OTHER
+}
+
+enum FinancialAccountSyncStatus {
+  MANUAL
+  PENDING
+  SYNCED
+  DISCONNECTED
+}
+
 enum NotificationType {
   INVOICE_OVERDUE
   INVOICE_DUE_SOON
@@ -261,6 +296,13 @@ model Organization {
   minimumOperatingReserve  Decimal  @default("0") @db.Decimal(18, 2)
   openingBalance           Decimal  @default("0") @db.Decimal(18, 2)
   openingBalanceDate       DateTime?
+  /// Tax planning mode. SIMPLE = single reserve rate. ADVANCED = per-owner assumptions.
+  taxPlanningMode          TaxPlanningMode @default(SIMPLE)
+  /// Tax year the current default rate/assumptions target.
+  taxPlanningYear          Int      @default(2026)
+  /// Manual cash earmarked for taxes — does not reduce recorded cash.
+  /// Used only to compute the reserve funding gap and safe-to-distribute.
+  taxReserveEarmarked      Decimal  @default("0") @db.Decimal(18, 2)
 
   subscriptionPlan         SubscriptionPlan @default(SOLO)
   subscriptionStatus       String?
@@ -296,6 +338,7 @@ model Organization {
   notifications            Notification[]
   recurringInvoices        RecurringInvoice[]
   auditLogs                AuditLog[]
+  financialAccounts        FinancialAccount[]
 
   @@index([slug])
 }
@@ -344,7 +387,17 @@ model Owner {
   email                    String?
   ownershipPercentage      Decimal  @db.Decimal(6, 3)
   distributionPercentage   Decimal  @db.Decimal(6, 3)
+  /// Simple mode: override on the organization default reserve rate.
   taxReserveOverride       Decimal? @db.Decimal(6, 3)
+  /// Optional state planning reserve rate (%). Additive to federal.
+  stateReserveRate         Decimal? @db.Decimal(6, 3)
+  /// Home state for state tax planning (not necessarily the org state).
+  residenceState           String?
+  /// Filing status used only for advanced planning assumptions.
+  filingStatus             FilingStatus?
+  /// Advanced-mode assumptions (JSON, versioned by calculationVersion).
+  /// Kept flexible so schema doesn't rot as statutory values change.
+  planningAssumptions      Json?
   active                   Boolean  @default(true)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -352,6 +405,8 @@ model Owner {
   organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user                     User?        @relation(fields: [userId], references: [id])
   distributions            Distribution[]
+  taxPayments              TaxPayment[]
+  taxEstimates             TaxEstimate[]
 
   @@index([organizationId])
 }
@@ -647,6 +702,8 @@ model TaxProfile {
   reserveRate    Decimal  @default("25.0") @db.Decimal(6, 3)
   federalEnabled Boolean  @default(true)
   stateEnabled   Boolean  @default(false)
+  /// Whether the org uses SIMPLE reserve or ADVANCED per-owner planning.
+  mode           TaxPlanningMode @default(SIMPLE)
   notes          String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -654,29 +711,50 @@ model TaxProfile {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
+/// Historical planning snapshot. Never overwrite prior snapshots — every
+/// asOfDate captures what LedgerFlow estimated at a moment in time so we
+/// can answer "what did we plan for at end of Q3?" later.
 model TaxEstimate {
   id             String   @id @default(cuid())
   organizationId String
+  ownerId        String?
   year           Int
-  estimatedProfit Decimal @db.Decimal(18, 2)
+  asOfDate       DateTime @default(now())
+  estimatedBusinessProfit Decimal @db.Decimal(18, 2)
+  allocatedOwnerProfit    Decimal? @db.Decimal(18, 2)
   reserveRate    Decimal  @db.Decimal(6, 3)
   reserveTarget  Decimal  @db.Decimal(18, 2)
+  federalEstimate Decimal? @db.Decimal(18, 2)
+  stateEstimate   Decimal? @db.Decimal(18, 2)
+  seEstimate      Decimal? @db.Decimal(18, 2)
+  otherEstimate   Decimal? @db.Decimal(18, 2)
+  totalEstimate   Decimal? @db.Decimal(18, 2)
+  assumptions    Json?
+  calculationVersion String @default("v1")
   notes          String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner          Owner?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
-  @@unique([organizationId, year])
   @@index([organizationId])
+  @@index([organizationId, year])
+  @@index([organizationId, ownerId, year])
 }
 
 model TaxPayment {
   id             String   @id @default(cuid())
   organizationId String
+  /// Optional owner for pass-through estimated taxes. null = organization-level.
+  ownerId        String?
   authority      TaxAuthority @default(IRS)
   jurisdiction   String?
   description    String?
+  /// Tax year the payment applies to (planning purposes).
+  taxYear        Int?
+  /// Optional quarter label like "Q1", "Q2", etc.
+  taxPeriod      String?
   estimatedAmount Decimal? @db.Decimal(18, 2)
   amountPaid     Decimal  @default("0") @db.Decimal(18, 2)
   dueDate        DateTime
@@ -688,10 +766,40 @@ model TaxPayment {
   updatedAt      DateTime @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner          Owner?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([organizationId, dueDate])
   @@index([organizationId, status])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, taxYear])
+}
+
+/// Optional lightweight bank/financial account abstraction. Used today for
+/// manual "tax reserve" balances and later for bank-sync integrations.
+/// NEVER store full account numbers — only lastFour.
+model FinancialAccount {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  name               String
+  institution        String?
+  type               FinancialAccountType @default(CHECKING)
+  purpose            FinancialAccountPurpose @default(OPERATING)
+  lastFour           String?
+  currentManualBalance Decimal? @db.Decimal(18, 2)
+  currency           String   @default("USD")
+  externalProvider   String?
+  externalAccountId  String?
+  syncStatus         FinancialAccountSyncStatus @default(MANUAL)
+  lastSyncedAt       DateTime?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, purpose])
 }
 
 // ---------- Recurring Invoices ----------

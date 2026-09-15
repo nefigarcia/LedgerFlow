@@ -101,7 +101,10 @@ export function InvoiceBuilder({
             <Field label="PO / reference">
               <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
             </Field>
-            <Field label="Tax rate %">
+            <Field
+              label="Sales tax %"
+              hint="Applied to this customer invoice only. Separate from income-tax planning and owner tax reserves."
+            >
               <Input type="number" step="0.01" min={0} max={100} value={taxRate} onChange={(e) => setTaxRate(e.target.value)} />
             </Field>
             <Field label="Discount">
@@ -180,7 +183,7 @@ export function InvoiceBuilder({
             <span className="num">− {formatMoney(totals.discount.toString(), currency)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Tax</span>
+            <span className="text-muted-foreground">Sales tax</span>
             <span className="num">{formatMoney(totals.taxAmount.toString(), currency)}</span>
           </div>
           <div className="border-t pt-2 flex items-center justify-between font-semibold">

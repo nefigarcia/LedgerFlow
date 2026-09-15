@@ -161,12 +161,76 @@ in the database.
 
 ## Tax planning
 
-- Tax numbers are **planning estimates** and are labelled as such in the UI.
-- Reserve target = `max(0, estimated profit × reserve rate)`.
-- Reserve remaining = `max(0, target − recorded tax payments)`.
-- Per-owner reserve overrides are supported.
-- US federal quarterly dates are provided as configurable defaults —
-  they can be edited or replaced by state, local, or non-US authorities.
+Tax numbers are **planning estimates** — never tax advice, never a filed return.
+Everything in this section is designed to help owners plan cash, not compute
+liability.
+
+### Terminology
+
+| Term                      | Meaning                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Sales tax**             | Customer-facing tax charged on an invoice. Unrelated to income-tax planning or an owner's tax reserve.     |
+| **Tax reserve**           | Internal cash-planning amount owners intend to set aside for future taxes.                                 |
+| **Tax payment**           | Cash actually sent to a tax authority (IRS, state, local). Moving cash to a savings account is *not* one.  |
+| **Cash earmarked for taxes** | Money kept in a reserve account. Still part of recorded cash, but protected from distribution.          |
+| **Distribution**          | Cash paid to an owner. Distributions do **not** determine an owner's taxable share of business profit.     |
+| **Allocated profit**      | An owner's share of estimated business profit for planning purposes (driven by ownership percentage).      |
+
+### Owner-centric planning
+
+Each owner has:
+
+- `ownershipPercentage` — drives allocation of estimated business profit.
+- `distributionPercentage` — drives the split of the distributable cash pool.
+- `taxReserveOverride` (%) — optional per-owner override on the org default rate.
+- `stateReserveRate` (%) — optional state planning add-on (Advanced mode).
+- `residenceState`, `filingStatus` — informational for advanced planning.
+
+Simple mode uses `taxReserveOverride ?? defaultTaxReserveRate`. Advanced mode
+additionally sums `stateReserveRate` on top. Advanced mode is a scaffold — it
+does **not** silently apply federal brackets or wage bases. Statutory values,
+when added, must be year-versioned and covered by tests.
+
+### Formulas
+
+```
+planningProfit          = payments received − deductible business expenses
+ownerAllocatedProfit    = max(0, planningProfit) × ownership%
+ownerReserveRate        = taxReserveOverride ?? defaultTaxReserveRate  (+ stateReserveRate in ADVANCED)
+ownerReserveTarget      = ownerAllocatedProfit × ownerReserveRate
+ownerRemainingReserve   = max(0, ownerReserveTarget − ownerEstimatedTaxPaymentsYTD)
+orgReserveTarget        = Σ ownerReserveTarget
+orgRemainingReserve     = max(0, orgReserveTarget − Σ ownerTaxPaymentsYTD)
+unfundedReserve         = max(0, orgRemainingReserve − cashEarmarkedForTaxes)
+safeToDistribute        = max(0, recordedCash − unfundedReserve − operatingReserve)
+```
+
+- **Earmarked cash does NOT reduce recorded cash.** Moving $2,100 between
+  Mercury checking and Mercury savings does not change the balance sheet — it
+  just makes that $2,100 protected from distribution.
+- **Distributions use `distributionPercentage`**, not ownership.
+- Recording a tax payment is what actually reduces recorded cash.
+
+### Historical snapshots
+
+`TaxEstimate` stores planning snapshots keyed by `year` and optionally `ownerId`,
+with an `asOfDate` timestamp. Multiple snapshots per year are preserved so the
+app can answer "what did we plan for at end of Q3?".
+
+### Bank-ready account abstraction
+
+`FinancialAccount` is a lightweight scaffold for future bank sync (Plaid,
+Mercury, etc.). Today it supports manual balances. `purpose = TAX_RESERVE`
+accounts are the canonical representation of earmarked cash; the manual
+`Organization.taxReserveEarmarked` value is the current source of truth and
+will remain valid until a live-sync driver is implemented. LedgerFlow never
+stores full account numbers — only `lastFour`.
+
+### US federal quarterly defaults
+
+Suggested quarterly dates are provided but editable per organization. All
+`TaxPayment` records support a `taxYear`, `taxPeriod`, `ownerId`, and
+`jurisdiction` so state and local schedules can be tracked alongside federal.
 
 ## AI assistant
 

@@ -1,16 +1,18 @@
 import { requireOrgAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import { getOwnerDistributionSummary, getAvailableToDistribute } from "@/services/financial-metrics";
+import { getOwnerDistributionSummary, getAvailableToDistribute, getRecordedCash } from "@/services/financial-metrics";
+import { getOwnerTaxPlanning } from "@/services/tax-planning";
 import { PageHeader, SectionHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Money } from "@/components/ui/money";
 import { CashAllocationBar } from "@/components/ui/cash-allocation-bar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatMoney, formatPercent, toNumber } from "@/lib/money/money";
 import { formatDate } from "@/lib/dates/dates";
 import { DistributionDialog } from "./distribution-dialog";
-import { HandCoins } from "lucide-react";
+import { HandCoins, Info } from "lucide-react";
 import { initials } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +29,7 @@ export default async function DistributionsPage({
   const { organizationSlug } = await params;
   const { new: openNew } = await searchParams;
   const ctx = await requireOrgAccess(organizationSlug, "distributions:read");
-  const [org, owners, summary, available, distributions] = await Promise.all([
+  const [org, owners, summary, available, cash, taxPlanning, distributions] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
       where: { id: ctx.organizationId },
       select: { currency: true },
@@ -38,6 +40,8 @@ export default async function DistributionsPage({
     }),
     getOwnerDistributionSummary({ organizationId: ctx.organizationId }),
     getAvailableToDistribute({ organizationId: ctx.organizationId }),
+    getRecordedCash({ organizationId: ctx.organizationId }),
+    getOwnerTaxPlanning({ organizationId: ctx.organizationId }),
     prisma.distribution.findMany({
       where: { organizationId: ctx.organizationId },
       orderBy: { date: "desc" },
@@ -47,6 +51,7 @@ export default async function DistributionsPage({
   ]);
 
   const pool = toNumber(available.available);
+  const taxByOwner = new Map(taxPlanning.owners.map((o) => [o.ownerId, o]));
 
   return (
     <div className="space-y-6">
@@ -58,6 +63,7 @@ export default async function DistributionsPage({
           <DistributionDialog
             organizationSlug={organizationSlug}
             owners={owners.map((o) => ({ id: o.id, name: o.name }))}
+            currency={org.currency}
             defaultOpen={Boolean(openNew)}
           />
         }
@@ -66,11 +72,19 @@ export default async function DistributionsPage({
       <Card>
         <CardContent className="grid gap-6 p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] md:p-8">
           <div>
-            <div className="metric-label">Distributable pool</div>
+            <div className="metric-label">Safe to distribute</div>
             <Money value={pool} currency={org.currency} size="hero" tone={pool > 0 ? "positive" : "default"} />
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-              Recorded cash minus tax reserve and operating reserve. Split by each owner&apos;s distribution percentage.
+              Recorded cash minus unfunded tax reserve minus operating reserve. Split by each owner&apos;s distribution percentage.
             </p>
+            <ul className="mt-4 space-y-1 text-xs">
+              <FlowLine label="Recorded cash" value={toNumber(cash)} currency={org.currency} />
+              <FlowLine label="− Unfunded tax reserve" value={toNumber(available.unfundedTaxReserve)} currency={org.currency} muted />
+              <FlowLine label="− Operating reserve" value={toNumber(available.operatingReserve)} currency={org.currency} muted />
+              <li className="pt-1.5 border-t border-border">
+                <FlowLine label="= Safe to distribute" value={pool} currency={org.currency} bold />
+              </li>
+            </ul>
           </div>
           <div className="rounded-xl border border-border/60 bg-surface/60 p-5">
             <div className="metric-label mb-3">Recommended split</div>
@@ -88,15 +102,30 @@ export default async function DistributionsPage({
             ) : (
               <div className="text-sm text-muted-foreground">Add owners to see recommended splits.</div>
             )}
+            {toNumber(available.taxReserveEarmarked) > 0 ? (
+              <div className="mt-4 rounded-md bg-primary-soft/40 px-3 py-2 text-2xs text-primary-soft-foreground">
+                {formatMoney(available.taxReserveEarmarked, org.currency)} of cash is currently earmarked for taxes.
+                It stays on your balance sheet but is not counted as freely distributable.
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>
 
-      <SectionHeader title="Allocation vs. actual YTD" />
+      <Alert variant="info">
+        <Info className="h-4 w-4" />
+        <AlertDescription className="text-xs">
+          Distributions are cash transfers to owners. They do not determine an owner&apos;s taxable share of business profit —
+          that&apos;s driven by ownership allocation on the Tax planning page.
+        </AlertDescription>
+      </Alert>
+
+      <SectionHeader title="Allocation vs. actual YTD" description="Cash distributed compared to LedgerFlow's recommendation, and how it relates to allocated profit and reserves." />
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {summary.map((o, i) => {
           const target = o.recommendedDistribution;
           const gap = o.actualYtd - target;
+          const tax = taxByOwner.get(o.ownerId);
           return (
             <Card key={o.ownerId} className="p-5">
               <div className="flex items-center gap-3">
@@ -110,7 +139,7 @@ export default async function DistributionsPage({
                   </div>
                 </div>
               </div>
-              <div className="mt-4 space-y-2 text-sm">
+              <div className="mt-4 space-y-1.5 text-sm">
                 <Row label="Recommended" value={formatMoney(target, org.currency)} />
                 <Row label="Actual YTD" value={formatMoney(o.actualYtd, org.currency)} />
                 <Row
@@ -122,6 +151,17 @@ export default async function DistributionsPage({
                   }
                 />
               </div>
+              {tax ? (
+                <div className="mt-4 rounded-md bg-muted/60 p-3">
+                  <div className="text-2xs font-medium uppercase tracking-widest text-muted-foreground">
+                    Tax planning
+                  </div>
+                  <div className="mt-1 space-y-1 text-xs">
+                    <Row label="Allocated profit YTD" value={formatMoney(tax.allocatedProfit, org.currency)} small />
+                    <Row label="Reserve remaining" value={formatMoney(tax.remainingReserve, org.currency)} small />
+                  </div>
+                </div>
+              ) : null}
             </Card>
           );
         })}
@@ -166,11 +206,34 @@ export default async function DistributionsPage({
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value, small }: { label: string; value: React.ReactNode; small?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between">
+    <div className={`flex items-baseline justify-between ${small ? "text-xs" : ""}`}>
       <span className="text-muted-foreground">{label}</span>
       <span className="num font-medium">{value}</span>
     </div>
+  );
+}
+
+function FlowLine({
+  label,
+  value,
+  currency,
+  muted,
+  bold,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  muted?: boolean;
+  bold?: boolean;
+}) {
+  return (
+    <li className="flex items-baseline justify-between">
+      <span className={muted ? "text-muted-foreground" : bold ? "font-semibold" : ""}>{label}</span>
+      <span className={`num ${bold ? "font-semibold" : muted ? "text-muted-foreground" : ""}`}>
+        {formatMoney(value, currency)}
+      </span>
+    </li>
   );
 }

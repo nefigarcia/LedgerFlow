@@ -117,7 +117,7 @@ export default async function CashPage({
       <FinancialClarityHero
         currency={org.currency}
         recordedCash={toNumber(available.recordedCash)}
-        taxReserveRemaining={toNumber(available.taxReserveRemaining)}
+        taxReserveRemaining={toNumber(available.unfundedTaxReserve)}
         operatingReserve={toNumber(available.operatingReserve)}
         available={toNumber(available.available)}
       />

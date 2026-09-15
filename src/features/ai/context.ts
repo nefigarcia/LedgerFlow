@@ -6,15 +6,36 @@ import {
   getRevenueByClient,
   getExpenseBreakdown,
   getARAging,
+  getOwnerDistributionSummary,
 } from "@/services/financial-metrics";
+import { getConsolidatedTaxReserveStatus, getOwnerTaxPlanning } from "@/services/tax-planning";
 import { formatDate } from "@/lib/dates/dates";
 
 /**
  * Build a compact, tenant-scoped context payload for the assistant.
  * The AI receives only pre-aggregated numbers for the current organization.
+ *
+ * Terminology (echoed in the system prompt):
+ *   - Sales tax = customer-facing invoice tax (unrelated to income tax planning).
+ *   - Tax reserve = internal cash-planning amount for future taxes.
+ *   - Tax payment = money actually sent to a tax authority.
+ *   - Distribution = cash paid to an owner.
+ *   - Allocated profit = owner's share of estimated business profit.
  */
 export async function buildFinancialContext(organizationId: string) {
-  const [summary, forecast, byClient, expenseCats, aging, org, upcoming, recent] = await Promise.all([
+  const [
+    summary,
+    forecast,
+    byClient,
+    expenseCats,
+    aging,
+    org,
+    upcoming,
+    recent,
+    ownerTax,
+    consolidatedTax,
+    distributionSummary,
+  ] = await Promise.all([
     getDashboardSummary({ organizationId }),
     getForecast({ organizationId }),
     getRevenueByClient({ organizationId }),
@@ -30,12 +51,15 @@ export async function buildFinancialContext(organizationId: string) {
         openingBalance: true,
         minimumOperatingReserve: true,
         defaultTaxReserveRate: true,
+        taxPlanningMode: true,
+        taxReserveEarmarked: true,
       },
     }),
     prisma.taxPayment.findMany({
       where: { organizationId, status: { in: ["UPCOMING", "DUE_SOON", "OVERDUE"] } },
       orderBy: { dueDate: "asc" },
       take: 5,
+      include: { owner: { select: { name: true } } },
     }),
     prisma.invoice.findMany({
       where: {
@@ -46,6 +70,9 @@ export async function buildFinancialContext(organizationId: string) {
       take: 10,
       include: { client: { select: { companyName: true } } },
     }),
+    getOwnerTaxPlanning({ organizationId }),
+    getConsolidatedTaxReserveStatus({ organizationId }),
+    getOwnerDistributionSummary({ organizationId }),
   ]);
 
   return {
@@ -56,14 +83,55 @@ export async function buildFinancialContext(organizationId: string) {
       currency: org.currency,
       minimumOperatingReserve: Number(org.minimumOperatingReserve),
       defaultTaxReserveRate: Number(org.defaultTaxReserveRate),
+      taxPlanningMode: org.taxPlanningMode,
     },
     period: { year: new Date().getFullYear(), asOf: new Date().toISOString().slice(0, 10) },
-    cash: summary.cash,
+
+    // Cash breakdown — respect the new "earmarked vs unfunded" distinction.
+    cash: {
+      recordedCash: summary.cash.recordedCash,
+      taxReserveTarget: consolidatedTax.reserveTarget,
+      taxPaymentsMade: consolidatedTax.taxesPaid,
+      taxReserveRemaining: consolidatedTax.remainingReserve,
+      cashEarmarkedForTaxes: consolidatedTax.earmarkedCash,
+      unfundedTaxReserve: consolidatedTax.unfundedReserve,
+      operatingReserve: summary.cash.operatingReserve,
+      safeToDistribute: summary.cash.available,
+    },
+
     revenue: summary.revenue,
     expenses: summary.expenses,
-    profitYtd: summary.profitYtd,
+    estimatedBusinessProfit: summary.profitYtd,
     accountsReceivable: summary.accountsReceivable,
-    taxReserve: summary.taxReserve,
+
+    // Owner-level tax planning (allocated profit, reserve, payments, remaining)
+    ownerTaxPlanning: {
+      year: ownerTax.year,
+      mode: ownerTax.reserveMode,
+      owners: ownerTax.owners.map((o) => ({
+        name: o.name,
+        ownershipPercentage: o.ownershipPercentage,
+        distributionPercentage: o.distributionPercentage,
+        residenceState: o.residenceState,
+        reserveRate: o.reserveRate,
+        allocatedProfit: o.allocatedProfit,
+        recommendedReserve: o.reserveTarget,
+        estimatedTaxPaymentsMade: o.taxesPaid,
+        remainingReserve: o.remainingReserve,
+        distributionsYtd: o.distributionsYtd,
+      })),
+      aggregate: ownerTax.aggregate,
+    },
+
+    // Owner distributions (safe-to-distribute recommendation, not tax basis)
+    ownerDistributionRecommendation: distributionSummary.map((d) => ({
+      owner: d.name,
+      distributionPercentage: d.distributionPercentage,
+      recommendedDistribution: d.recommendedDistribution,
+      actualYtd: d.actualYtd,
+      variance: d.variance,
+    })),
+
     forecast,
     topClientsYtd: byClient.slice(0, 8),
     expenseCategoriesYtd: expenseCats.slice(0, 8),
@@ -72,6 +140,7 @@ export async function buildFinancialContext(organizationId: string) {
       counts: aging.counts,
     },
     upcomingTaxPayments: upcoming.map((t) => ({
+      scope: t.owner ? `owner:${t.owner.name}` : "organization",
       authority: t.authority,
       description: t.description,
       dueDate: formatDate(t.dueDate),

@@ -167,7 +167,7 @@ export default async function DashboardPage({
           <FinancialClarityHero
             currency={currency}
             recordedCash={summary.cash.recordedCash}
-            taxReserveRemaining={summary.cash.taxReserveRemaining}
+            taxReserveRemaining={summary.cash.unfundedTaxReserve}
             operatingReserve={summary.cash.operatingReserve}
             available={summary.cash.available}
             askHref={`${base}/assistant`}

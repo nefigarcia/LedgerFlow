@@ -6,6 +6,7 @@ import { FinancialSettingsForm } from "./financial-form";
 import { InvoiceSettingsForm } from "./invoice-form";
 import { OwnersSection } from "./owners-section";
 import { MembersSection } from "./members-section";
+import { TaxPlanningSettings } from "./tax-planning-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function SettingsPage({
         <TabsList>
           <TabsTrigger value="financial">Financial</TabsTrigger>
           <TabsTrigger value="invoice">Invoice</TabsTrigger>
+          <TabsTrigger value="tax">Tax planning</TabsTrigger>
           <TabsTrigger value="owners">Owners</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
@@ -60,6 +62,28 @@ export default async function SettingsPage({
               invoiceNextNumber: org.invoiceNextNumber,
               defaultPaymentTermsDays: org.defaultPaymentTermsDays,
             }}
+          />
+        </TabsContent>
+        <TabsContent value="tax">
+          <TaxPlanningSettings
+            organizationSlug={organizationSlug}
+            org={{
+              currency: org.currency,
+              taxPlanningMode: org.taxPlanningMode,
+              taxPlanningYear: org.taxPlanningYear,
+              defaultTaxReserveRate: org.defaultTaxReserveRate.toString(),
+              taxReserveEarmarked: org.taxReserveEarmarked.toString(),
+              businessType: org.businessType,
+            }}
+            owners={owners.map((o) => ({
+              id: o.id,
+              name: o.name,
+              ownershipPercentage: o.ownershipPercentage.toString(),
+              taxReserveOverride: o.taxReserveOverride?.toString() ?? null,
+              stateReserveRate: o.stateReserveRate?.toString() ?? null,
+              residenceState: o.residenceState,
+              filingStatus: o.filingStatus,
+            }))}
           />
         </TabsContent>
         <TabsContent value="owners">

@@ -140,6 +140,7 @@ async function main() {
   await prisma.expense.deleteMany({ where: { organizationId: org.id } });
   await prisma.distribution.deleteMany({ where: { organizationId: org.id } });
   await prisma.taxPayment.deleteMany({ where: { organizationId: org.id } });
+  await prisma.financialAccount.deleteMany({ where: { organizationId: org.id } });
 
   // Reset invoice numbering
   await prisma.organization.update({
@@ -297,28 +298,62 @@ async function main() {
     }
   }
 
-  // Tax payments (quarterly)
+  // Owner-scoped quarterly estimated tax payments.
+  // Each owner has their own pass-through quarterly obligation.
   const quarters = [
-    { d: new Date(year, 3, 15), paid: true },
-    { d: new Date(year, 5, 15), paid: true },
-    { d: new Date(year, 8, 15), paid: false },
-    { d: new Date(year + 1, 0, 15), paid: false },
+    { label: "Q1", d: new Date(year, 3, 15), paid: true },
+    { label: "Q2", d: new Date(year, 5, 15), paid: true },
+    { label: "Q3", d: new Date(year, 8, 15), paid: false },
+    { label: "Q4", d: new Date(year + 1, 0, 15), paid: false },
   ];
-  for (const q of quarters) {
-    await prisma.taxPayment.create({
-      data: {
-        organizationId: org.id,
-        authority: "IRS",
-        jurisdiction: "Federal",
-        description: `Q${quarters.indexOf(q) + 1} estimated payment`,
-        estimatedAmount: "3500",
-        amountPaid: q.paid ? "3500" : "0",
-        paidDate: q.paid ? subDays(q.d, 3) : null,
-        dueDate: q.d,
-        status: q.paid ? "PAID" : q.d < new Date() ? "OVERDUE" : "UPCOMING",
-      },
-    });
+  for (const o of owners) {
+    for (const q of quarters) {
+      const each = 1800; // demo per-owner quarterly amount
+      await prisma.taxPayment.create({
+        data: {
+          organizationId: org.id,
+          ownerId: o.id,
+          authority: "IRS",
+          jurisdiction: "Federal",
+          taxYear: year,
+          taxPeriod: q.label,
+          description: `${q.label} estimated tax`,
+          estimatedAmount: each.toString(),
+          amountPaid: q.paid ? each.toString() : "0",
+          paidDate: q.paid ? subDays(q.d, 3) : null,
+          dueDate: q.d,
+          status: q.paid ? "PAID" : q.d < new Date() ? "OVERDUE" : "UPCOMING",
+        },
+      });
+    }
   }
+
+  // Simulate the org keeping cash in a "tax reserve" savings account.
+  await prisma.organization.update({
+    where: { id: org.id },
+    data: {
+      taxReserveEarmarked: "5400",
+      taxPlanningMode: "SIMPLE",
+      taxPlanningYear: year,
+    },
+  });
+
+  // Also create a demo FinancialAccount for that reserve balance
+  // (kept in sync with the earmarked field so bank-connected mode can
+  // later replace the manual value).
+  await prisma.financialAccount.create({
+    data: {
+      organizationId: org.id,
+      name: "Mercury Tax Reserve",
+      institution: "Mercury",
+      type: "SAVINGS",
+      purpose: "TAX_RESERVE",
+      currency: "USD",
+      lastFour: "1234",
+      currentManualBalance: "5400",
+      syncStatus: "MANUAL",
+    },
+  });
 
   console.log(`Seed complete. Sign in at http://localhost:3000/login with ${email} / demo1234`);
 }
