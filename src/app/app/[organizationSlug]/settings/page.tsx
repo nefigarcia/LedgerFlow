@@ -7,15 +7,25 @@ import { InvoiceSettingsForm } from "./invoice-form";
 import { OwnersSection } from "./owners-section";
 import { MembersSection } from "./members-section";
 import { TaxPlanningSettings } from "./tax-planning-settings";
+import { ProfileSettings } from "./profile-form";
+import { hasPermission } from "@/lib/permissions/permissions";
+import { isStorageConfigured } from "@/lib/storage/storage";
+import { logoSrcFor } from "@/lib/storage/logo-url";
 
 export const dynamic = "force-dynamic";
 
+const TABS = ["profile", "financial", "invoice", "tax", "owners", "members", "ai"] as const;
+
 export default async function SettingsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ organizationSlug: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { organizationSlug } = await params;
+  const { tab } = await searchParams;
+  const defaultTab = TABS.includes(tab as (typeof TABS)[number]) ? tab! : "profile";
   const ctx = await requireOrgAccess(organizationSlug, "settings:read");
   const [org, owners, memberships] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
@@ -32,9 +42,10 @@ export default async function SettingsPage({
   ]);
   return (
     <div>
-      <PageHeader title="Settings" description="Manage your organization, financial defaults, and members." />
-      <Tabs defaultValue="financial">
-        <TabsList>
+      <PageHeader title="Settings" description="Manage your business profile, branding, financial defaults, and members." />
+      <Tabs defaultValue={defaultTab}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="profile">Profile & branding</TabsTrigger>
           <TabsTrigger value="financial">Financial</TabsTrigger>
           <TabsTrigger value="invoice">Invoice</TabsTrigger>
           <TabsTrigger value="tax">Tax planning</TabsTrigger>
@@ -42,6 +53,27 @@ export default async function SettingsPage({
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
         </TabsList>
+        <TabsContent value="profile">
+          <ProfileSettings
+            organizationSlug={organizationSlug}
+            canEdit={hasPermission(ctx.role, "org:manage")}
+            storageReady={isStorageConfigured()}
+            logoSrc={logoSrcFor(org)}
+            org={{
+              name: org.name,
+              legalName: org.legalName ?? "",
+              taxIdLastFour: org.taxIdLastFour ?? "",
+              addressLine1: org.addressLine1 ?? "",
+              addressLine2: org.addressLine2 ?? "",
+              addressCity: org.addressCity ?? "",
+              addressState: org.addressState ?? "",
+              addressPostalCode: org.addressPostalCode ?? "",
+              addressCountry: org.addressCountry ?? "",
+              phone: org.phone ?? "",
+              website: org.website ?? "",
+            }}
+          />
+        </TabsContent>
         <TabsContent value="financial">
           <FinancialSettingsForm
             organizationSlug={organizationSlug}
@@ -61,6 +93,9 @@ export default async function SettingsPage({
               invoicePrefix: org.invoicePrefix,
               invoiceNextNumber: org.invoiceNextNumber,
               defaultPaymentTermsDays: org.defaultPaymentTermsDays,
+              invoicePaymentInstructions: org.invoicePaymentInstructions ?? "",
+              invoiceDefaultNotes: org.invoiceDefaultNotes ?? "",
+              invoiceDefaultTerms: org.invoiceDefaultTerms ?? "",
             }}
           />
         </TabsContent>

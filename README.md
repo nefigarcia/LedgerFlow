@@ -154,10 +154,118 @@ in the database.
   optimistic-locking `updateMany({ where: { invoiceNextNumber: current } })`
   with retry — safe under concurrent requests.
 - PDF invoices render server-side via `pdfkit` and are streamed from
-  `/api/invoices/[invoiceId]/pdf`. Only members of the invoice's organisation
-  can request the PDF.
+  `/api/invoices/[invoiceId]/pdf` (`?download=1` forces a download). Only
+  members of the invoice's organisation can request the PDF. The workspace
+  logo, business details, and payment instructions are printed on it; long
+  invoices break across pages with "Page x of y" footers.
+- `pdfkit` is listed in `serverExternalPackages` (next.config.ts). It must not
+  be bundled: it loads its font files from `node_modules/pdfkit/js/data`.
+- **Drafts are editable** at `/invoices/[id]/edit` — add, change, reorder, or
+  remove line items; totals are recomputed on the server. Once an invoice is
+  sent or has a payment it becomes read-only (void it and duplicate instead).
+  Recording a payment on a draft marks it sent.
+- **Duplicate** copies any invoice into a new draft dated today.
 - Draft invoices can be deleted; sent/paid invoices can only be voided.
-  Payments are reversed rather than hard-deleted.
+  Payments are reversed (from the invoice page) rather than hard-deleted.
+- Settings → Invoice holds the prefix, next number (numbers already used are
+  skipped), payment terms, and default payment instructions / notes / terms
+  copied onto each new invoice.
+
+## File storage & logos (AWS S3)
+
+Each workspace can upload a logo (Settings → Profile & branding). PNG or JPEG,
+max 2 MB, validated by file signature on the server. It appears in the sidebar
+and on invoice PDFs.
+
+Files live in a **private** bucket under a per-tenant prefix:
+
+```
+orgs/{organizationId}/logo/{id}-logo.png
+orgs/{organizationId}/documents/...   (reserved for receipts/documents)
+```
+
+The browser never talks to S3. Uploads go through a server action; logos are
+served by `/api/logo/[organizationSlug]`, which checks workspace membership
+before streaming the object. No public URLs, no CORS, no presigned links.
+
+Configuration (`.env`):
+
+```bash
+STORAGE_DRIVER="s3"
+S3_BUCKET="ledgerflow-prod-uploads-<unique-suffix>"
+S3_REGION="us-east-1"
+S3_ACCESS_KEY_ID="..."       # IAM user limited to this bucket
+S3_SECRET_ACCESS_KEY="..."
+```
+
+In development `STORAGE_DRIVER="local"` writes to `./storage/uploads`. On
+Vercel the local driver is refused with a clear error, because the filesystem
+is read-only and would silently lose files.
+
+### Creating the bucket (recommended configuration)
+
+1. **Region** — the same region as your Vercel functions and MySQL database
+   (Vercel's default `iad1` = `us-east-1`). Use separate buckets for dev and prod.
+2. **Create bucket** (S3 console → Create bucket):
+   - Name: `ledgerflow-prod-uploads-<unique-suffix>` (globally unique, lowercase).
+   - Object Ownership: **ACLs disabled (Bucket owner enforced)**.
+   - **Block all public access: ON** (all four boxes).
+   - Bucket Versioning: **Enable** (recovers overwritten/deleted files).
+   - Default encryption: **SSE-S3** (AES-256). The app also requests it per object.
+3. **Lifecycle rule** (Management → Create lifecycle rule, whole bucket):
+   - Permanently delete noncurrent versions after **30 days**.
+   - Delete expired object delete markers; abort incomplete multipart uploads after **7 days**.
+4. **Bucket policy** — reject non-HTTPS access:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Sid": "DenyInsecureTransport",
+       "Effect": "Deny",
+       "Principal": "*",
+       "Action": "s3:*",
+       "Resource": ["arn:aws:s3:::BUCKET", "arn:aws:s3:::BUCKET/*"],
+       "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+     }]
+   }
+   ```
+
+5. **IAM user for the app** (IAM → Users → Create user `ledgerflow-app`, no
+   console access) with this inline policy — least privilege, objects under
+   `orgs/` only, no bucket listing:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Sid": "LedgerFlowObjects",
+       "Effect": "Allow",
+       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+       "Resource": "arn:aws:s3:::BUCKET/orgs/*"
+     }]
+   }
+   ```
+
+   Create an access key (use case: "Application running outside AWS") and put
+   it in `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` in Vercel → Settings →
+   Environment Variables (Production and Preview separately). Rotate it
+   periodically.
+6. **CORS**: not needed — uploads and downloads go through the app server.
+
+Equivalent AWS CLI:
+
+```bash
+BUCKET=ledgerflow-prod-uploads-<unique-suffix>; REGION=us-east-1
+aws s3api create-bucket --bucket $BUCKET --region $REGION   # outside us-east-1 add: --create-bucket-configuration LocationConstraint=$REGION
+aws s3api put-public-access-block --bucket $BUCKET --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-ownership-controls --bucket $BUCKET --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]'
+aws s3api put-bucket-versioning --bucket $BUCKET --versioning-configuration Status=Enabled
+aws s3api put-bucket-encryption --bucket $BUCKET --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+```
+
+Cloudflare R2 or MinIO also work: set `S3_ENDPOINT` (path-style addressing is
+enabled automatically).
 
 ## Tax planning
 
@@ -283,7 +391,7 @@ Included tests cover:
 
 - Stripe subscriptions (schema fields exist on `Organization`).
 - Bank sync (Plaid) — replace `RecordedCash` derivation with reconciled ledger.
-- S3-compatible storage — implement the `StorageDriver` interface.
+- Receipt/document uploads — reuse the storage driver (`documents` / `receipts` key categories).
 - Email (Resend/Postmark) — replace the dev-mode placeholder in `requestPasswordResetAction`.
 - Scheduled jobs — `RecurringInvoice` and `TaxPayment` reminders.
 

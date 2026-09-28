@@ -287,7 +287,17 @@ model Organization {
   addressCountry           String?
   phone                    String?
   website                  String?
+  /// Legacy field — not used. Logos are stored via `logoKey` in the storage driver.
   logoUrl                  String?
+  /// Storage key of the uploaded logo (S3 object key or local path). Never a public URL.
+  logoKey                  String?
+  logoMimeType             String?
+  logoUpdatedAt            DateTime?
+
+  /// Defaults copied onto each new invoice (editable per invoice).
+  invoicePaymentInstructions String? @db.Text
+  invoiceDefaultNotes      String?  @db.Text
+  invoiceDefaultTerms      String?  @db.Text
 
   invoicePrefix            String   @default("INV")
   invoiceNextNumber        Int      @default(1)

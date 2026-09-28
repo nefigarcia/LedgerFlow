@@ -31,7 +31,9 @@ export function LoginForm() {
             return;
           }
           toast.success("Welcome back");
-          router.push("/app");
+          // Return to the page that required sign-in, but only same-site paths.
+          const next = new URLSearchParams(window.location.search).get("next");
+          router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/app");
           router.refresh();
         });
       }}

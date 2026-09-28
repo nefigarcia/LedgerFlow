@@ -60,11 +60,14 @@ export async function recordPayment(input: RecordPaymentInput) {
     if (invoice) {
       const newPaid = moneyRound(moneyAdd(invoice.amountPaid, amount));
       const newBalance = moneyRound(moneySubtract(invoice.total, newPaid));
+      // A payment on a draft means the invoice went out: promote it to sent
+      // so it becomes read-only and shows up in receivables.
+      const effectiveStatus = invoice.status === "DRAFT" ? "SENT" : invoice.status;
       const newStatus = recomputeInvoiceStatus(
         invoice.total,
         newPaid,
         invoice.dueDate,
-        invoice.status,
+        effectiveStatus,
       );
       await tx.invoice.update({
         where: { id: invoice.id },
@@ -72,6 +75,7 @@ export async function recordPayment(input: RecordPaymentInput) {
           amountPaid: newPaid.toString(),
           balanceDue: newBalance.toString(),
           status: newStatus,
+          sentAt: invoice.sentAt ?? new Date(),
           paidAt: newStatus === "PAID" ? new Date() : invoice.paidAt,
         },
       });

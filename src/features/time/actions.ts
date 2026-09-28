@@ -1,4 +1,5 @@
 "use server";
+import { parseDateOnly } from "@/lib/dates/dates";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -40,7 +41,7 @@ export async function createTimeEntryAction(
       organizationId: ctx.organizationId,
       projectId: data.projectId,
       userId: ctx.userId,
-      date: new Date(data.date),
+      date: parseDateOnly(data.date),
       description: data.description || null,
       hours: data.hours.toString(),
       billable: data.billable,

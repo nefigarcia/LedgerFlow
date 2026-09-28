@@ -13,6 +13,8 @@ import { formatMoney, toNumber } from "@/lib/money/money";
 import { formatDate } from "@/lib/dates/dates";
 import { ArrowLeft, Download } from "lucide-react";
 import { InvoiceActions } from "./invoice-actions";
+import { ReversePaymentButton } from "./reverse-payment-button";
+import { hasPermission } from "@/lib/permissions/permissions";
 import { RecordPaymentDialog } from "../../payments/record-payment-dialog";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +36,8 @@ export default async function InvoiceDetailPage({
   });
   if (!invoice) notFound();
   const base = `/app/${organizationSlug}`;
+  const canWriteInvoices = hasPermission(ctx.role, "invoices:write");
+  const canWritePayments = hasPermission(ctx.role, "payments:write");
   const pct = toNumber(invoice.total) > 0
     ? Math.min(100, (toNumber(invoice.amountPaid) / toNumber(invoice.total)) * 100)
     : 0;
@@ -56,11 +60,16 @@ export default async function InvoiceDetailPage({
         actions={
           <>
             <Button asChild variant="outline">
-              <a href={`/api/invoices/${invoice.id}/pdf`} target="_blank" rel="noreferrer">
+              <a href={`/api/invoices/${invoice.id}/pdf?download=1`}>
                 <Download className="h-4 w-4" /> Download PDF
               </a>
             </Button>
-            <InvoiceActions organizationSlug={organizationSlug} invoiceId={invoice.id} status={invoice.status} />
+            <InvoiceActions
+              organizationSlug={organizationSlug}
+              invoiceId={invoice.id}
+              status={invoice.status}
+              canWrite={canWriteInvoices}
+            />
           </>
         }
       />
@@ -144,7 +153,7 @@ export default async function InvoiceDetailPage({
                   {pct.toFixed(0)}% collected · {formatMoney(invoice.balanceDue, invoice.currency)} remaining
                 </div>
               </div>
-              {invoice.status !== "PAID" && invoice.status !== "VOID" ? (
+              {canWritePayments && invoice.status !== "PAID" && invoice.status !== "VOID" ? (
                 <RecordPaymentDialog
                   organizationSlug={organizationSlug}
                   invoiceId={invoice.id}
@@ -171,7 +180,16 @@ export default async function InvoiceDetailPage({
                         <div>{formatDate(p.date)}</div>
                         <div className="text-2xs text-muted-foreground">{p.method}{p.reference ? ` · ${p.reference}` : ""}</div>
                       </div>
-                      <Money value={p.amount} currency={invoice.currency} tone="positive" />
+                      <div className="flex items-center gap-1">
+                        <Money value={p.amount} currency={invoice.currency} tone="positive" />
+                        {canWritePayments ? (
+                          <ReversePaymentButton
+                            organizationSlug={organizationSlug}
+                            paymentId={p.id}
+                            label={formatMoney(p.amount, invoice.currency)}
+                          />
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -179,12 +197,18 @@ export default async function InvoiceDetailPage({
             </CardContent>
           </Card>
 
-          {(invoice.notes || invoice.terms) && (
+          {(invoice.notes || invoice.terms || invoice.paymentInstructions) && (
             <Card>
               <CardHeader>
                 <CardTitle>Notes & terms</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
+                {invoice.paymentInstructions ? (
+                  <div>
+                    <div className="mb-1 text-2xs font-medium uppercase tracking-widest text-muted-foreground">Payment instructions</div>
+                    <p className="whitespace-pre-line text-foreground/80">{invoice.paymentInstructions}</p>
+                  </div>
+                ) : null}
                 {invoice.notes ? (
                   <div>
                     <div className="mb-1 text-2xs font-medium uppercase tracking-widest text-muted-foreground">Notes</div>

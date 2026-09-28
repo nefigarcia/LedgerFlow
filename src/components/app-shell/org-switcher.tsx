@@ -24,7 +24,7 @@ export function OrgSwitcher({
   role,
   collapsed,
 }: {
-  organization: { id: string; name: string; slug: string };
+  organization: { id: string; name: string; slug: string; logoSrc?: string | null };
   memberships: Membership[];
   role?: string;
   collapsed?: boolean;
@@ -34,10 +34,10 @@ export function OrgSwitcher({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="grid h-9 w-9 place-items-center rounded-md bg-gradient-to-br from-primary to-primary-hover text-primary-foreground text-xs font-semibold shadow-sm hover:opacity-90"
+            className="grid h-9 w-9 place-items-center overflow-hidden rounded-md hover:opacity-90"
             aria-label={`Workspace: ${organization.name}`}
           >
-            {initials(organization.name)}
+            <OrgAvatar name={organization.name} logoSrc={organization.logoSrc} className="h-9 w-9" />
           </button>
         </DropdownMenuTrigger>
         <OrgMenu current={organization} memberships={memberships} role={role} />
@@ -53,9 +53,7 @@ export function OrgSwitcher({
             "hover:border-border-strong hover:bg-surface-hover",
           )}
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-gradient-to-br from-primary to-primary-hover text-primary-foreground text-xs font-semibold shadow-sm">
-            {initials(organization.name)}
-          </span>
+          <OrgAvatar name={organization.name} logoSrc={organization.logoSrc} className="h-8 w-8" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-foreground">{organization.name}</span>
             {role ? (
@@ -109,5 +107,27 @@ function OrgMenu({
         </Link>
       </DropdownMenuItem>
     </DropdownMenuContent>
+  );
+}
+
+/** Workspace logo when uploaded, otherwise initials on the brand gradient. */
+function OrgAvatar({ name, logoSrc, className }: { name: string; logoSrc?: string | null; className?: string }) {
+  if (logoSrc) {
+    return (
+      <span className={cn("grid shrink-0 place-items-center overflow-hidden rounded-md border border-border/60 bg-white p-0.5", className)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoSrc} alt="" className="max-h-full max-w-full object-contain" />
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "grid shrink-0 place-items-center rounded-md bg-gradient-to-br from-primary to-primary-hover text-xs font-semibold text-primary-foreground shadow-sm",
+        className,
+      )}
+    >
+      {initials(name)}
+    </span>
   );
 }

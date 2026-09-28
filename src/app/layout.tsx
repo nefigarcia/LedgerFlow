@@ -41,7 +41,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Toaster richColors closeButton position="top-right" toastOptions={{ duration: 3800 }} />
         </ThemeProvider>
         {process.env.NODE_ENV === "production" ? <Analytics /> : null}
-      <Analytics />
       </body>
     </html>
   );

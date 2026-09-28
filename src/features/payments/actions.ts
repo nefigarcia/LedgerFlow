@@ -5,6 +5,8 @@ import { requireOrgAccess } from "@/lib/auth/session";
 import { fail, fromZodError, ok, type ActionResult } from "@/lib/validation/result";
 import { PaymentMethod } from "@prisma/client";
 import { recordPayment, reversePayment } from "@/services/payment-service";
+import { parseDateOnly } from "@/lib/dates/dates";
+import { toUserMessage } from "@/lib/errors";
 
 const paymentSchema = z.object({
   invoiceId: z.string().optional().nullable(),
@@ -32,7 +34,7 @@ export async function recordPaymentAction(
       invoiceId: data.invoiceId || null,
       clientId: data.clientId || null,
       amount: data.amount,
-      date: new Date(data.date),
+      date: parseDateOnly(data.date),
       method: data.method,
       reference: data.reference,
       notes: data.notes,
@@ -42,7 +44,7 @@ export async function recordPaymentAction(
     revalidatePath(`/app/${organizationSlug}/dashboard`);
     return ok({ id: payment.id });
   } catch (err) {
-    return fail("PAYMENT_ERROR", (err as Error).message);
+    return fail("PAYMENT_ERROR", toUserMessage(err, "Could not record the payment."));
   }
 }
 
@@ -54,9 +56,10 @@ export async function reversePaymentAction(
   try {
     await reversePayment(ctx.organizationId, paymentId, ctx.userId);
     revalidatePath(`/app/${organizationSlug}/payments`);
-    revalidatePath(`/app/${organizationSlug}/invoices`);
+    revalidatePath(`/app/${organizationSlug}/invoices`, "layout");
+    revalidatePath(`/app/${organizationSlug}/dashboard`);
     return ok({ ok: true });
   } catch (err) {
-    return fail("PAYMENT_ERROR", (err as Error).message);
+    return fail("PAYMENT_ERROR", toUserMessage(err, "Could not reverse the payment."));
   }
 }

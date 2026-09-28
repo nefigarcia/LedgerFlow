@@ -1,4 +1,5 @@
 "use server";
+import { parseDateOnly } from "@/lib/dates/dates";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -81,7 +82,7 @@ export async function createExpenseAction(
       projectId: data.projectId || null,
       description: data.description.trim(),
       amount: data.amount.toString(),
-      date: new Date(data.date),
+      date: parseDateOnly(data.date),
       paymentMethod: data.paymentMethod,
       taxDeductible: data.taxDeductible,
       reimbursable: data.reimbursable,

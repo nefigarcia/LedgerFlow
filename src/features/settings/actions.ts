@@ -45,11 +45,21 @@ export async function updateFinancialSettingsAction(
   return ok({ ok: true });
 }
 
+const optionalLongText = (max: number) =>
+  z.string().max(max).optional().nullable().transform((v) => (v && v.trim() ? v.trim() : null));
+
 const invoiceSettingsSchema = z.object({
-  invoicePrefix: z.string().min(1).max(10),
-  invoiceNextNumber: z.coerce.number().min(1),
-  defaultPaymentTermsDays: z.coerce.number().min(0).max(365),
-  paymentInstructions: z.string().max(2000).optional().nullable(),
+  invoicePrefix: z
+    .string()
+    .trim()
+    .min(1)
+    .max(10)
+    .regex(/^[A-Za-z0-9]+$/, "Use letters and numbers only"),
+  invoiceNextNumber: z.coerce.number().int().min(1).max(999_999),
+  defaultPaymentTermsDays: z.coerce.number().int().min(0).max(365),
+  paymentInstructions: optionalLongText(2000),
+  defaultNotes: optionalLongText(5000),
+  defaultTerms: optionalLongText(2000),
 });
 
 export async function updateInvoiceSettingsAction(
@@ -59,15 +69,30 @@ export async function updateInvoiceSettingsAction(
   const ctx = await requireOrgAccess(organizationSlug, "settings:write");
   const parsed = invoiceSettingsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fromZodError(parsed.error);
-  await prisma.organization.update({
-    where: { id: ctx.organizationId },
-    data: {
-      invoicePrefix: parsed.data.invoicePrefix.toUpperCase(),
-      invoiceNextNumber: parsed.data.invoiceNextNumber,
-      defaultPaymentTermsDays: parsed.data.defaultPaymentTermsDays,
+  const data = {
+    invoicePrefix: parsed.data.invoicePrefix.toUpperCase(),
+    invoiceNextNumber: parsed.data.invoiceNextNumber,
+    defaultPaymentTermsDays: parsed.data.defaultPaymentTermsDays,
+    // Previously collected in the form but never saved.
+    invoicePaymentInstructions: parsed.data.paymentInstructions,
+    invoiceDefaultNotes: parsed.data.defaultNotes,
+    invoiceDefaultTerms: parsed.data.defaultTerms,
+  };
+  await prisma.organization.update({ where: { id: ctx.organizationId }, data });
+  await recordAudit({
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    action: "UPDATE",
+    entityType: "InvoiceSettings",
+    entityId: ctx.organizationId,
+    after: {
+      invoicePrefix: data.invoicePrefix,
+      invoiceNextNumber: data.invoiceNextNumber,
+      defaultPaymentTermsDays: data.defaultPaymentTermsDays,
     },
   });
   revalidatePath(`/app/${organizationSlug}/settings`);
+  revalidatePath(`/app/${organizationSlug}/invoices/new`);
   return ok({ ok: true });
 }
 
@@ -91,6 +116,15 @@ export async function upsertOwnerAction(
   const parsed = ownerSchema.safeParse(raw);
   if (!parsed.success) return fromZodError(parsed.error);
   const data = parsed.data;
+  // Tenant isolation: never update an owner by id alone — it must belong to
+  // the caller's organization.
+  if (ownerId) {
+    const existing = await prisma.owner.findFirst({
+      where: { id: ownerId, organizationId: ctx.organizationId },
+      select: { id: true },
+    });
+    if (!existing) return fail("NOT_FOUND", "Owner not found.");
+  }
   const record = ownerId
     ? await prisma.owner.update({
         where: { id: ownerId },

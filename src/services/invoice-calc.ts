@@ -37,6 +37,37 @@ export function computeInvoiceTotals(
   };
 }
 
+/**
+ * Decide what happens to each line item when a draft invoice is saved.
+ *
+ *  - incoming items whose id matches an existing item → update in place
+ *    (keeps any time entries linked to that item)
+ *  - incoming items without a (known) id → create
+ *  - existing items not present in the incoming list → delete
+ *
+ * Unknown ids are treated as new items rather than trusted, so a browser
+ * can never point an update at another invoice's line item.
+ */
+export function planInvoiceItemChanges<T extends { id?: string | null }>(
+  existingIds: string[],
+  incoming: T[],
+): { update: (T & { id: string; sortOrder: number })[]; create: (T & { sortOrder: number })[]; deleteIds: string[] } {
+  const existing = new Set(existingIds);
+  const kept = new Set<string>();
+  const update: (T & { id: string; sortOrder: number })[] = [];
+  const create: (T & { sortOrder: number })[] = [];
+  incoming.forEach((item, sortOrder) => {
+    if (item.id && existing.has(item.id) && !kept.has(item.id)) {
+      kept.add(item.id);
+      update.push({ ...item, id: item.id, sortOrder });
+    } else {
+      create.push({ ...item, id: undefined, sortOrder });
+    }
+  });
+  const deleteIds = existingIds.filter((id) => !kept.has(id));
+  return { update, create, deleteIds };
+}
+
 export function recomputeInvoiceStatus(
   invoiceTotal: MoneyInput,
   amountPaid: MoneyInput,

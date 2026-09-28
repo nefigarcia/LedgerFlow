@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { requireOrgAccess, getUserOrganizations } from "@/lib/auth/session";
 import { AppShell } from "@/components/app-shell/app-shell";
+import { logoSrcFor } from "@/lib/storage/logo-url";
 
 export default async function OrgLayout({
   children,
@@ -20,7 +21,8 @@ export default async function OrgLayout({
         name: true,
         slug: true,
         currency: true,
-        logoUrl: true,
+        logoKey: true,
+        logoUpdatedAt: true,
         subscriptionPlan: true,
       },
     }),
@@ -34,7 +36,13 @@ export default async function OrgLayout({
 
   return (
     <AppShell
-      organization={org}
+      organization={{
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        currency: org.currency,
+        logoSrc: logoSrcFor(org),
+      }}
       role={ctx.role}
       memberships={memberships.map((m) => ({
         id: m.organization.id,

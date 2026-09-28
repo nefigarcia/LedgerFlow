@@ -24,7 +24,7 @@ import { QuickCreate } from "./quick-create";
 import { CommandPalette } from "./command-palette";
 
 interface AppShellProps {
-  organization: { id: string; name: string; slug: string; currency: string; logoUrl: string | null };
+  organization: { id: string; name: string; slug: string; currency: string; logoSrc: string | null };
   role: OrganizationRole;
   memberships: { id: string; name: string; slug: string }[];
   user?: { name: string | null; email: string | null; image: string | null } | null;

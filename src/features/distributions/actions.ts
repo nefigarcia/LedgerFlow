@@ -1,4 +1,5 @@
 "use server";
+import { parseDateOnly } from "@/lib/dates/dates";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -81,7 +82,7 @@ export async function recordDistributionAction(
     data: {
       organizationId: ctx.organizationId,
       ownerId: data.ownerId,
-      date: new Date(data.date),
+      date: parseDateOnly(data.date),
       amount: data.amount.toString(),
       memo: data.memo || null,
       method: data.method || null,

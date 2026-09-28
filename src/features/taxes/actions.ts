@@ -1,4 +1,5 @@
 "use server";
+import { parseDateOnly } from "@/lib/dates/dates";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
@@ -58,7 +59,7 @@ export async function upsertTaxPaymentAction(
   const status: TaxPaymentStatus =
     data.paidDate || (data.amountPaid && data.amountPaid > 0)
       ? "PAID"
-      : new Date(data.dueDate) < new Date()
+      : parseDateOnly(data.dueDate) < new Date()
         ? "OVERDUE"
         : "UPCOMING";
 
@@ -74,8 +75,8 @@ export async function upsertTaxPaymentAction(
           taxPeriod: data.taxPeriod || null,
           estimatedAmount: data.estimatedAmount != null ? data.estimatedAmount.toString() : null,
           amountPaid: data.amountPaid.toString(),
-          dueDate: new Date(data.dueDate),
-          paidDate: data.paidDate ? new Date(data.paidDate) : null,
+          dueDate: parseDateOnly(data.dueDate),
+          paidDate: data.paidDate ? parseDateOnly(data.paidDate) : null,
           reference: data.reference || null,
           notes: data.notes || null,
           status,
@@ -92,8 +93,8 @@ export async function upsertTaxPaymentAction(
           taxPeriod: data.taxPeriod || null,
           estimatedAmount: data.estimatedAmount != null ? data.estimatedAmount.toString() : null,
           amountPaid: data.amountPaid.toString(),
-          dueDate: new Date(data.dueDate),
-          paidDate: data.paidDate ? new Date(data.paidDate) : null,
+          dueDate: parseDateOnly(data.dueDate),
+          paidDate: data.paidDate ? parseDateOnly(data.paidDate) : null,
           reference: data.reference || null,
           notes: data.notes || null,
           status,
