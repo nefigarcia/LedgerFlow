@@ -110,8 +110,132 @@ export async function recordDistributionAction(
       overSafeConfirmed: Boolean(data.confirmOverSafe),
     },
   });
+  revalidateDistributionPaths(organizationSlug);
+  return ok({ id: created.id });
+}
+
+export async function updateDistributionAction(
+  organizationSlug: string,
+  distributionId: string,
+  formData: FormData,
+): Promise<DistributionResult> {
+  const ctx = await requireOrgAccess(organizationSlug, "distributions:write");
+  const raw = Object.fromEntries(formData);
+  const parsed = distributionSchema.safeParse(raw);
+  if (!parsed.success) return fromZodError(parsed.error);
+  const data = parsed.data;
+
+  const existing = await prisma.distribution.findFirst({
+    where: { id: distributionId, organizationId: ctx.organizationId },
+    include: { owner: { select: { name: true } } },
+  });
+  if (!existing) return fail("NOT_FOUND", "Distribution not found.");
+
+  const owner = await prisma.owner.findFirst({
+    where: { id: data.ownerId, organizationId: ctx.organizationId },
+  });
+  if (!owner) return fail("NOT_FOUND", "Owner not found.");
+
+  // Same safety guard as create, but the existing amount is already out of
+  // recorded cash, so add it back before comparing. Only increases can trip it.
+  if (!data.confirmOverSafe) {
+    const available = await getAvailableToDistribute({ organizationId: ctx.organizationId });
+    const attempted = toDecimal(data.amount);
+    const safe = toDecimal(available.available).plus(toDecimal(existing.amount));
+    if (attempted.gt(safe.plus("0.01"))) {
+      return {
+        success: false,
+        error: {
+          code: "OVER_SAFE_CONFIRMATION_REQUIRED",
+          message: `This distribution (${attempted.toFixed(2)}) exceeds LedgerFlow's currently calculated safe-to-distribute amount (${moneyRound(safe).toFixed(2)}). It may use cash reserved for taxes or operations.`,
+          overSafe: {
+            safeAvailable: toNumber(safe),
+            attempted: toNumber(attempted),
+            wouldExceedBy: toNumber(attempted.minus(safe)),
+          },
+        },
+      };
+    }
+  }
+
+  await prisma.distribution.update({
+    where: { id: distributionId },
+    data: {
+      ownerId: data.ownerId,
+      date: parseDateOnly(data.date),
+      amount: data.amount.toString(),
+      memo: data.memo || null,
+      method: data.method || null,
+      reference: data.reference || null,
+    },
+  });
+  await recordActivity({
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    action: "distribution.update",
+    entityType: "Distribution",
+    entityId: distributionId,
+    message: `Distribution updated: ${toDecimal(existing.amount).toFixed(2)} to ${existing.owner.name} → ${data.amount.toFixed(2)} to ${owner.name}${data.confirmOverSafe ? " (over-safe confirmed)" : ""}`,
+  });
+  await recordAudit({
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    action: "UPDATE",
+    entityType: "Distribution",
+    entityId: distributionId,
+    before: {
+      amount: existing.amount.toString(),
+      ownerId: existing.ownerId,
+      date: existing.date.toISOString(),
+    },
+    after: {
+      amount: data.amount.toString(),
+      ownerId: data.ownerId,
+      date: parseDateOnly(data.date).toISOString(),
+      overSafeConfirmed: Boolean(data.confirmOverSafe),
+    },
+  });
+  revalidateDistributionPaths(organizationSlug);
+  return ok({ id: distributionId });
+}
+
+export async function deleteDistributionAction(
+  organizationSlug: string,
+  distributionId: string,
+): Promise<ActionResult<{ ok: true }>> {
+  const ctx = await requireOrgAccess(organizationSlug, "distributions:write");
+  const existing = await prisma.distribution.findFirst({
+    where: { id: distributionId, organizationId: ctx.organizationId },
+    include: { owner: { select: { name: true } } },
+  });
+  if (!existing) return fail("NOT_FOUND", "Distribution not found.");
+  await prisma.distribution.delete({ where: { id: distributionId } });
+  await recordActivity({
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    action: "distribution.delete",
+    entityType: "Distribution",
+    entityId: distributionId,
+    message: `Distribution of ${toDecimal(existing.amount).toFixed(2)} to ${existing.owner.name} deleted`,
+  });
+  await recordAudit({
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    action: "DELETE",
+    entityType: "Distribution",
+    entityId: distributionId,
+    before: {
+      amount: existing.amount.toString(),
+      ownerId: existing.ownerId,
+      date: existing.date.toISOString(),
+    },
+  });
+  revalidateDistributionPaths(organizationSlug);
+  return ok({ ok: true });
+}
+
+function revalidateDistributionPaths(organizationSlug: string) {
   revalidatePath(`/app/${organizationSlug}/distributions`);
   revalidatePath(`/app/${organizationSlug}/dashboard`);
   revalidatePath(`/app/${organizationSlug}/cash`);
-  return ok({ id: created.id });
 }

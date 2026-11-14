@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, Plus } from "lucide-react";
-import { recordDistributionAction } from "@/features/distributions/actions";
+import { recordDistributionAction, updateDistributionAction } from "@/features/distributions/actions";
 import { formatMoney } from "@/lib/money/money";
 
 interface OverSafeData {
@@ -19,19 +19,48 @@ interface OverSafeData {
   wouldExceedBy: number;
 }
 
+export interface EditableDistribution {
+  id: string;
+  ownerId: string;
+  /** yyyy-MM-dd */
+  date: string;
+  amount: number;
+  memo: string | null;
+  method: string | null;
+  reference: string | null;
+}
+
+/**
+ * Records a new distribution, or edits an existing one when `distribution` is
+ * passed. In edit mode the dialog is controlled (`open`/`onOpenChange`) and
+ * renders no trigger button.
+ */
 export function DistributionDialog({
   organizationSlug,
   owners,
   currency = "USD",
   defaultOpen,
+  distribution,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   organizationSlug: string;
   owners: { id: string; name: string }[];
   currency?: string;
   defaultOpen?: boolean;
+  distribution?: EditableDistribution;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? false);
-  const [ownerId, setOwnerId] = useState(owners[0]?.id ?? "");
+  const isEdit = Boolean(distribution);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen ?? false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (v: boolean) => {
+    if (controlledOpen === undefined) setUncontrolledOpen(v);
+    onOpenChange?.(v);
+  };
+  const initialOwnerId = distribution?.ownerId ?? owners[0]?.id ?? "";
+  const [ownerId, setOwnerId] = useState(initialOwnerId);
   const [overSafe, setOverSafe] = useState<OverSafeData | null>(null);
   const [pendingForm, setPendingForm] = useState<FormData | null>(null);
   const [pending, start] = useTransition();
@@ -40,9 +69,11 @@ export function DistributionDialog({
 
   const submit = (fd: FormData) => {
     start(async () => {
-      const res = await recordDistributionAction(organizationSlug, fd);
+      const res = distribution
+        ? await updateDistributionAction(organizationSlug, distribution.id, fd)
+        : await recordDistributionAction(organizationSlug, fd);
       if ("success" in res && res.success) {
-        toast.success("Distribution recorded");
+        toast.success(isEdit ? "Distribution updated" : "Distribution recorded");
         setOpen(false);
         setOverSafe(null);
         setPendingForm(null);
@@ -62,17 +93,20 @@ export function DistributionDialog({
       open={open}
       onOpenChange={(v) => {
         setOpen(v);
+        if (v) setOwnerId(initialOwnerId);
         if (!v) {
           setOverSafe(null);
           setPendingForm(null);
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button><Plus className="h-4 w-4" /> Record distribution</Button>
-      </DialogTrigger>
+      {isEdit ? null : (
+        <DialogTrigger asChild>
+          <Button><Plus className="h-4 w-4" /> Record distribution</Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader><DialogTitle>Record distribution</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{isEdit ? "Edit distribution" : "Record distribution"}</DialogTitle></DialogHeader>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -92,19 +126,19 @@ export function DistributionDialog({
               </Select>
             </Field>
             <Field label="Amount" required>
-              <Input name="amount" type="number" step="0.01" min="0.01" required />
+              <Input name="amount" type="number" step="0.01" min="0.01" defaultValue={distribution?.amount} required />
             </Field>
             <Field label="Date" required>
-              <Input name="date" type="date" defaultValue={today} required />
+              <Input name="date" type="date" defaultValue={distribution?.date ?? today} required />
             </Field>
             <Field label="Method">
-              <Input name="method" placeholder="Transfer, check…" />
+              <Input name="method" placeholder="Transfer, check…" defaultValue={distribution?.method ?? undefined} />
             </Field>
             <Field label="Reference">
-              <Input name="reference" />
+              <Input name="reference" defaultValue={distribution?.reference ?? undefined} />
             </Field>
             <Field label="Memo" className="md:col-span-2">
-              <Textarea name="memo" rows={2} />
+              <Textarea name="memo" rows={2} defaultValue={distribution?.memo ?? undefined} />
             </Field>
           </div>
 
@@ -144,10 +178,10 @@ export function DistributionDialog({
                   submit(fd);
                 }}
               >
-                {pending ? "Recording…" : "Confirm & record"}
+                {pending ? "Saving…" : isEdit ? "Confirm & save" : "Confirm & record"}
               </Button>
             ) : (
-              <Button type="submit" disabled={pending || !ownerId}>{pending ? "Saving…" : "Record"}</Button>
+              <Button type="submit" disabled={pending || !ownerId}>{pending ? "Saving…" : isEdit ? "Save changes" : "Record"}</Button>
             )}
           </DialogFooter>
         </form>

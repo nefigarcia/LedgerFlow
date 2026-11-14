@@ -10,8 +10,10 @@ import { Money } from "@/components/ui/money";
 import { CashAllocationBar } from "@/components/ui/cash-allocation-bar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatMoney, formatPercent, toNumber } from "@/lib/money/money";
-import { formatDate } from "@/lib/dates/dates";
+import { formatDate, toDateInputValue } from "@/lib/dates/dates";
+import { hasPermission } from "@/lib/permissions/permissions";
 import { DistributionDialog } from "./distribution-dialog";
+import { DistributionRowActions } from "./distribution-row-actions";
 import { HandCoins, Info } from "lucide-react";
 import { initials } from "@/lib/utils";
 
@@ -52,6 +54,8 @@ export default async function DistributionsPage({
 
   const pool = toNumber(available.available);
   const taxByOwner = new Map(taxPlanning.owners.map((o) => [o.ownerId, o]));
+  const canWrite = hasPermission(ctx.role, "distributions:write");
+  const ownerOptions = owners.map((o) => ({ id: o.id, name: o.name }));
 
   return (
     <div className="space-y-6">
@@ -62,7 +66,7 @@ export default async function DistributionsPage({
         actions={
           <DistributionDialog
             organizationSlug={organizationSlug}
-            owners={owners.map((o) => ({ id: o.id, name: o.name }))}
+            owners={ownerOptions}
             currency={org.currency}
             defaultOpen={Boolean(openNew)}
           />
@@ -186,6 +190,7 @@ export default async function DistributionsPage({
                   <TableHead>Owner</TableHead>
                   <TableHead>Memo</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
+                  {canWrite ? <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -195,6 +200,25 @@ export default async function DistributionsPage({
                     <TableCell>{d.owner.name}</TableCell>
                     <TableCell className="text-muted-foreground">{d.memo ?? "—"}</TableCell>
                     <TableCell className="text-right"><Money value={d.amount} currency={org.currency} /></TableCell>
+                    {canWrite ? (
+                      <TableCell className="w-12 text-right">
+                        <DistributionRowActions
+                          organizationSlug={organizationSlug}
+                          owners={ownerOptions}
+                          currency={org.currency}
+                          ownerName={d.owner.name}
+                          distribution={{
+                            id: d.id,
+                            ownerId: d.ownerId,
+                            date: toDateInputValue(d.date),
+                            amount: toNumber(d.amount),
+                            memo: d.memo,
+                            method: d.method,
+                            reference: d.reference,
+                          }}
+                        />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
